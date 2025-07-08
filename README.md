@@ -23,6 +23,7 @@ The project goes beyond a simple model in a notebook. It implements a full MLOps
 
 The final deployment is an event-driven, serverless architecture that is both scalable and cost-effective.
 
+```
 ┌───────────────────┐ ┌──────────┐ ┌─────────────────┐ ┌────────────────────────────┐
 │ Cloud Scheduler   ├─────►│ Pub/Sub ├─────►│ Eventarc Trigger ├─────►│ Cloud Run Service         │
 │ (Weekly Cron Job) │     │ Topic   │     │ (Listens for msg) │     │ (m5-batch-forecast-trigger) │
@@ -33,6 +34,8 @@ The final deployment is an event-driven, serverless architecture that is both sc
                                                      │ GCS Bucket        │ │ BigQuery       │
                                                      │ (Model & Raw Data)│◄─┤ (Forecast Sink)│
                                                      └───────────────────┘ └────────────────┘
+
+```
 
 **Workflow:**
 1.  **Cloud Scheduler** fires a cron job every week.
@@ -45,6 +48,7 @@ The final deployment is an event-driven, serverless architecture that is both sc
 
 The repository is organized into two main components: `training` and `prediction_server`.
 
+```
 walmart-forecasting/
 │
 ├── training/
@@ -60,6 +64,7 @@ walmart-forecasting/
 ├── data/                  # (Local) Holds the raw M5 competition CSV files.
 │
 └── README.md              # This file.
+```
 
 ## How to Deploy: Step-by-Step Guide
 
