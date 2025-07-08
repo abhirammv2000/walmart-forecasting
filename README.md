@@ -23,16 +23,16 @@ The project goes beyond a simple model in a notebook. It implements a full MLOps
 
 The final deployment is an event-driven, serverless architecture that is both scalable and cost-effective.
 
-┌───────────────────┐ ┌──────────┐ ┌─────────────────┐ ┌─────────────────────────┐
-│ Cloud Scheduler ├─────►│ Pub/Sub ├─────►│ Eventarc Trigger├─────►│ Cloud Run Service │
-│ (Weekly Cron Job) │ │ Topic │ │ (Listens for msg) │ │ (m5-batch-forecast-trigger) │
-└───────────────────┘ └──────────┘ └─────────────────┘ └──────────┬──────────┬─────┘
-│ │
-▼ ▼
-┌──────────┴────────┐ ┌────────────────┐
-│ GCS Bucket │ │ BigQuery │
-│ (Model & Raw Data)│◄─┤ (Forecast Sink)│
-└───────────────────┘ └────────────────┘
+┌───────────────────┐ ┌──────────┐ ┌─────────────────┐ ┌────────────────────────────┐
+│ Cloud Scheduler   ├─────►│ Pub/Sub ├─────►│ Eventarc Trigger ├─────►│ Cloud Run Service         │
+│ (Weekly Cron Job) │     │ Topic   │     │ (Listens for msg) │     │ (m5-batch-forecast-trigger) │
+└───────────────────┘ └──────────┘ └─────────────────┘ └──────────┬──────────┬────────┘
+                                                                  │          │
+                                                                  ▼          ▼
+                                                     ┌──────────┴────────┐ ┌────────────────┐
+                                                     │ GCS Bucket        │ │ BigQuery       │
+                                                     │ (Model & Raw Data)│◄─┤ (Forecast Sink)│
+                                                     └───────────────────┘ └────────────────┘
 
 **Workflow:**
 1.  **Cloud Scheduler** fires a cron job every week.
@@ -48,19 +48,18 @@ The repository is organized into two main components: `training` and `prediction
 walmart-forecasting/
 │
 ├── training/
-│ ├── Dockerfile # Defines the environment for the Vertex AI training job.
-│ ├── train.py # The Python script that trains the LightGBM model.
-│ └── config.yaml # Configuration file for the Vertex AI Custom Job.
+│   ├── Dockerfile         # Defines the environment for the Vertex AI training job.
+│   ├── train.py           # The Python script that trains the LightGBM model.
+│   └── config.yaml        # Configuration file for the Vertex AI Custom Job.
 │
 ├── prediction_server/
-│ ├── Dockerfile # Defines the environment for the Cloud Run prediction service.
-│ ├── main.py # The Python script with the main prediction logic.
-│ └── requirements.txt # Python dependencies for the prediction service.
+│   ├── Dockerfile         # Defines the environment for the Cloud Run prediction service.
+│   ├── main.py            # The Python script with the main prediction logic.
+│   └── requirements.txt   # Python dependencies for the prediction service.
 │
-├── data/ # (Local) Holds the raw M5 competition CSV files.
+├── data/                  # (Local) Holds the raw M5 competition CSV files.
 │
-└── README.md # This file.
-
+└── README.md              # This file.
 
 ## How to Deploy: Step-by-Step Guide
 
