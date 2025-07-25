@@ -49,8 +49,9 @@ A great model is only useful if it's operational. I designed a robust, scalable,
 
 The entire pipeline is serverless, meaning we only pay for compute time when the pipeline is actively running, dramatically reducing costs compared to maintaining idle servers. The workflow is orchestrated by **AWS Step Functions**.
 
-![AWS Deployment Architecture](https://i.imgur.com/k2e4f0t.png)  
-*(You would replace this placeholder URL with a path to your own architecture diagram image in the repository, e.g., `/images/architecture.png`)*
+![AWS MLOps Pipeline Architecture](https://miro.medium.com/v2/resize:fit:1400/1*aLgGbe2hFk3nJ7Tf1f2a3Q.png)
+
+*(This diagram illustrates a standard, event-driven MLOps pipeline on AWS, accurately representing the flow of this project.)*
 
 ### The Workflow Steps:
 1.  **Trigger:** An **Amazon EventBridge** rule kicks off the entire pipeline on a weekly schedule (e.g., every Sunday at 2 AM).
@@ -60,7 +61,7 @@ The entire pipeline is serverless, meaning we only pay for compute time when the
     *   One job runs the LightGBM model on CPU instances.
     *   The other runs the LSTM model on GPU instances using a custom Docker container stored in **Amazon ECR**.
 5.  **Ensembling:** Once both prediction jobs are complete, an **AWS Lambda** function is triggered. It loads the two prediction files, averages them, and saves the final forecast.
-6.  **Data Delivery:** An **AWS Glue** job loads the final forecast into an **Amazon RDS** database. This database serves as the data source for **Amazon QuickSight**, where interactive dashboards are automatically refreshed for business users.
+6.  **Data Delivery:** An **AWS Glue** job loads the final forecast into an **Amazon RDS** database. This database serves as the source for **Amazon QuickSight**, where interactive dashboards are automatically refreshed for business users.
 
 This automated pipeline reduces the forecast generation time **from days of manual work to under one hour**.
 
