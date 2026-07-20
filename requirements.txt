@@ -1,0 +1,22 @@
+# Pinned for reproducibility.
+#
+# These are exact pins, not floors. Results are sensitive to the LightGBM
+# version (tree-building details change between minor releases), and an
+# unpinned `>=` silently upgraded 4.6.0 -> 4.7.0 between two runs, which would
+# make experiment-to-experiment comparisons untrustworthy. Bump deliberately and
+# re-baseline when you do.
+lightgbm==4.7.0
+# XGBoost powers the multi-quantile backend (reg:quantileerror with a list of
+# alphas -> all 9 quantiles from ONE fit). Multi-quantile exists since 2.1.
+# Pinned to 3.2.0 deliberately: 3.3.0 requires Python >=3.12, but our VM image
+# (Ubuntu 22.04) ships Python 3.10. Pin to a version valid in EVERY target
+# environment, not just the dev laptop.
+xgboost==3.2.0
+pandas==2.3.3
+numpy==2.2.6
+pyarrow==21.0.0
+scikit-learn==1.7.2
+psutil==7.0.0
+
+# Testing
+pytest==8.4.2

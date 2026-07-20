@@ -1,0 +1,19 @@
+# Data (large raw competition CSVs - download separately into data/)
+data/*.csv
+
+# Generated artifacts
+outputs/models/
+outputs/predictions/
+outputs/submissions/
+outputs/cache/          # regenerable feature caches (hundreds of MB)
+outputs/*.log
+
+# Legacy heavy artifacts (kept locally, not versioned)
+legacy/old_artifacts/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
