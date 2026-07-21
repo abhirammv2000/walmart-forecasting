@@ -1,0 +1,2 @@
+timestamp,name,fold,backend,train_start_day,n_estimators,bottom_spl,crossing_rate,best_iters,runtime_s,desc
+2026-07-20 22:52,q_trained,final,xgboost,1750,600,0.2606,0.5575,599/599/599/599/599/599/599/599/599,4148,"XGB multi-quantile, final window, ts1750, n_est=600 (proper train)"

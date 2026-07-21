@@ -1,75 +1,221 @@
-# End-to-End Hierarchical Demand Forecasting System
+# End-to-End Demand Forecasting → Inventory Optimization
 
-This repository contains the complete methodology for a state-of-the-art demand forecasting system, designed to predict daily unit sales for over **30,490 unique products** across Walmart's network. The project transforms raw retail data into actionable inventory insights using a hierarchical LightGBM model and a fully automated AWS pipeline.
+Predict daily unit sales for **30,490 Walmart item-store series**, quantify the
+*uncertainty* around each forecast, and turn that uncertainty into **stocking
+decisions** whose cost is measured against real held-out demand.
 
-## Project Overview
+The project is deliberately built in two halves, because a forecast is not a
+decision:
 
-The core of this project addresses the **M5 Forecasting** challenge: predicting sales for intermittent, high-volatility retail items. The solution prioritizes scalability and interpretability, moving beyond simple accuracy to solve the "zero-sales" problem inherent in supply chain data.
+1. **Demand forecasting** — a global LightGBM point model (WRMSSE) *and* a
+   nine-quantile distributional model (weighted scaled pinball loss).
+2. **Inventory / replenishment** — a newsvendor policy on top of those quantiles,
+   simulated against actuals, reporting fill rate and cost. *This is what makes
+   the forecast worth anything.*
 
-* **Modeling:** Engineered a hierarchical demand forecasting engine using **LightGBM with Tweedie loss**, specifically designed to handle intermittent (zero-inflated) demand. The model achieved a **Validation WRMSSE of 0.58**, a performance benchmark comparable to the **Top 5%** of the global leaderboard.
-* **Deployment:** Architected a serverless batch inference pipeline on AWS using **Step Functions** to orchestrate **SageMaker Batch Transform**, automating weekly forecasts and integrating directly with **Amazon QuickSight** for inventory planning.
+Everything here is **measured on a frozen held-out window, reproducible, and
+covered by 30 automated tests** — including a leakage test that proves no feature
+sees the future. Where a result is limited, this README says so.
+
+---
+
+## Results at a glance
+
+**Forecasting** (held-out window d1914–1941, scored once)
+
+| | value |
+|---|---|
+| **Held-out WRMSSE** (point forecast) | **0.6475** |
+| 3-fold rolling-origin CV mean (steering metric) | 0.6401 |
+| Seasonal-naive baseline | ~1.08 → we are **~40% better** |
+| Bottom-level weighted SPL (9 quantiles) | 0.2606 |
+
+CV and held-out agree within 0.007 — the validation scheme was **not** overfit,
+which was the single most common M5 failure mode.
+
+**Inventory decision** (same window, all 30,490 series, `Cu`=0.30·price, `Co`=0.03·price)
+
+| policy | fill rate | **total cost** |
+|---|---|---|
+| order the median forecast | 47.6% | 681,517 |
+| **newsvendor `Q* = F⁻¹(CR)`** | **92.5%** | **317,730 (−53%)** |
+
+And the check that ties theory to practice: the **empirically cost-minimising
+service level (0.900)** matches the **theoretical critical ratio (0.909)**.
+
+> **Honest scope note.** WRMSSE 0.6475 is a solid, fully-reproducible single-model
+> result — not a leaderboard-topping one (strong public single models reach ~0.52
+> via heavy tuning / per-store models / ensembling, deliberately out of scope
+> here). The quantile model is data-limited (see *Uncertainty*), so its SPL is a
+> working number, not a competitive one. The value of this project is the honest,
+> end-to-end pipeline from raw data to a costed decision — not a single metric.
 
 ---
 
 ## The Business Problem
 
-For major retailers, "Sales Forecasting" is often insufficient because it fails to account for lost demand during stockouts. This project focuses on **Demand Forecasting** to mitigate two multi-billion dollar risks:
-1.  **Stock-outs:** Preventing lost revenue by predicting demand spikes before they empty the shelves.
-2.  **Overstocking:** Reducing holding costs for slow-moving items with intermittent sales patterns.
+For a retailer, "sales forecasting" alone is insufficient: it ignores demand lost
+during stockouts, and it says nothing about *how much to order*. This project
+targets **demand forecasting → replenishment** to manage two costly risks:
 
-The system provides granular, 28-day forecasts at the SKU level while maintaining consistency across stores and states.
+1. **Stock-outs** — lost revenue when demand exceeds what's on the shelf.
+2. **Overstocking** — holding, markdown and spoilage cost on slow-moving items.
 
----
-
-## Solution Part 1: The Forecasting Model
-
-Unlike traditional regression models that struggle with sparse data, this solution uses a gradient-boosting approach optimized for retail characteristics.
-
-### 1. Handling Intermittent Demand (The "Tweedie" Advantage)
-Retail data is "zero-inflated"—many items don't sell every single day. Standard RMSE loss functions treat these zeros as noise, leading to under-forecasting.
-
-* **Objective Function:** I utilized **Tweedie Loss** (variance power $1 < p < 2$), which models a compound Poisson-Gamma distribution. This allows the model to simultaneously predict *if* an item will sell (probability of zero) and *how much* it will sell (magnitude).
-* **Result:** This significantly improved accuracy on slow-moving inventory compared to standard Poisson or RMSE objectives.
-
-### 2. Feature Engineering
-I engineered over 50 robust features to capture temporal dynamics and pricing psychology:
-* **Lag Features:** Sales from shifted windows (e.g., `lag_7`, `lag_28`) to capture weekly seasonality.
-* **Rolling Statistics:** Moving averages and standard deviations over 7, 30, and 90-day windows to detect trend stability.
-* **Price Momentum:** Relative price changes (Current Price vs. Historical Average) to measure price elasticity.
-* **Calendar Events:** Binary flags for SNAP (food stamps) release dates, holidays, and sporting events.
+The catch that makes it hard: roughly **60% of the bottom-level series are zeros**
+(intermittent demand). The right order quantity for such items is emphatically
+*not* the average forecast — it's a tail quantile — which is why the project
+carries the demand *distribution* all the way through to the decision.
 
 ---
 
-## Solution Part 2: The Automated AWS Deployment Pipeline
+## Solution Part 1 — The Forecasting Model
 
-The model is deployed via a **serverless, event-driven architecture** on AWS. This design decouples compute from storage, ensuring the system costs near-zero when not actively generating forecasts.
+A single **global LightGBM** (one model learning across all series, not 30k local
+ones), chosen and configured for retail's specific quirks.
 
-### Deployment Architecture
-The pipeline is orchestrated by **AWS Step Functions**, which manages the workflow state, retries, and error handling.
+### Handling intermittent demand (the Tweedie advantage)
+Standard RMSE treats the many zeros as noise and under-forecasts. The model uses
+a **Tweedie objective** (`variance_power=1.1`), a compound Poisson-Gamma loss that
+jointly captures *whether* an item sells and *how much* — a large improvement on
+slow-moving inventory over RMSE/Poisson.
 
-### The Workflow Steps:
-1.  **Trigger:** An **Amazon EventBridge** rule triggers the pipeline on a weekly schedule (e.g., Sunday 2 AM) or upon new data arrival in S3.
-2.  **Orchestration:** **AWS Step Functions** initializes the state machine.
-3.  **Batch Inference:** The workflow triggers a **SageMaker Batch Transform** job.
-    * It spins up transient compute instances (e.g., `ml.m5.xlarge`).
-    * It processes the 30K+ SKU feature vectors in parallel against the trained LightGBM model.
-    * It saves the raw predictions back to a private S3 bucket.
-4.  **Post-Processing:** An **AWS Lambda** function triggers to validate the output file and format the results (adding date timestamps and SKU identifiers).
-5.  **Visualization:** The final dataset in S3 is ingested by **Amazon QuickSight** (via SPICE). Dashboards automatically refresh, presenting "Stockout Risk" and "Predicted Demand" views to stakeholders.
+### Feature engineering
+The base recipe is ~30 features capturing temporal dynamics and pricing:
+* **Lags & rolling stats** — sales lags (28–35) and rolling mean/std, all **≥ 28
+  days** so one model forecasts the whole 28-day horizon with no recursion and no
+  leakage.
+* **Price** — price vs. its own history (momentum), a proxy for elasticity.
+* **Calendar** — events, and per-state **SNAP** (food-stamp) flags, which move
+  FOODS demand materially.
+
+Additional feature groups (longer rolling windows, richer price/calendar signals)
+were implemented and **A/B-tested on CV — and shelved because they produced no
+measurable gain** at fixed hyperparameters. Reporting what *didn't* work is part
+of the point; see [docs/05-features.md](docs/05-features.md).
+
+### How it's validated
+Rolling-origin backtests on three 28-day windows (never random splits), steering
+on the CV mean, with d1914–1941 held out and touched once. See
+[docs/04-validation.md](docs/04-validation.md).
+
+---
+
+## Solution Part 2 — Uncertainty (the distribution)
+
+The inventory decision needs `F⁻¹`, not a point estimate — so the model also
+forecasts **nine quantiles** (`0.005 … 0.995`) and is scored with **WSPL**
+(weighted scaled pinball loss), the official M5 uncertainty metric.
+
+* Direct quantile regression — either nine LightGBM fits or, faster, **one
+  XGBoost multi-output fit** (`reg:quantileerror` over all nine alphas at once).
+* Independent fits can cross (`q_0.005 > q_0.995`); predictions are **sorted per
+  (series, day)** to stay a valid distribution.
+
+**Limitation, stated plainly:** this model is trained on ~4.1M rows (vs. the point
+model's 42M) because multi-quantile training is expensive. A retrain at 4× the
+rounds moved SPL only 0.2618 → 0.2606 — proving **rounds aren't the bottleneck,
+training-data volume is.** More data is the clearest remaining win. See
+[docs/07-uncertainty.md](docs/07-uncertainty.md).
+
+---
+
+## Solution Part 3 — Inventory / Replenishment (the differentiator)
+
+The **newsvendor model** turns a demand distribution into an order quantity:
+
+```
+critical ratio  CR = Cu / (Cu + Co)          # Cu = shortage cost, Co = overage cost
+optimal order   Q* = F⁻¹(CR)                 # a QUANTILE of demand, not the mean
+```
+
+Because stockouts cost more than leftovers (`Cu > Co`), `CR > 0.5` and the optimal
+order sits **above** the point forecast. We simulate a periodic-review policy
+against **actual realised demand**, carrying inventory over day to day, and report
+fill rate, stockout rate, and holding/shortage/total cost.
+
+**Result:** the newsvendor policy cuts total cost **−53%** and lifts fill rate
+**47.6% → 92.5%** vs. ordering the point forecast. The sharpest finding: with ~60%
+zeros, the median forecast is *0* for most SKU-days, so "order the forecast"
+literally means "stock nothing" — no amount of extra WRMSSE tuning fixes that;
+you need the distribution.
+
+The simulation also supports a non-zero **lead time**, where stock must cover the
+`L+R`-day protection interval. Since **quantiles are not additive**, that interval
+is built by sampling demand paths and re-extracting the quantile. Full analysis,
+including the service-level/cost trade-off curve, in
+[docs/08-inventory.md](docs/08-inventory.md).
+
+---
+
+## Engineering, Reproducibility & Deployment
+
+**Reproducibility is a first-class feature here.** Pinned dependencies (an
+unpinned `>=` silently changed a result mid-project); `deterministic=True` after
+measuring ±0.01 run-to-run noise; a feature cache; an experiment ledger; and **30
+tests** pinning the metrics, the economics, and the no-leakage guarantee.
+
+Large training runs were executed on **GCP** (`e2-highmem` / `n2-highmem` VMs,
+driven by the scripts in `scripts_vm/`), staged through GCS, and torn down after
+each run.
+
+**Target production architecture (design).** The original deployment was aimed at
+a serverless **AWS** batch-inference pipeline — **SageMaker Batch Transform**
+orchestrated by **Step Functions**, triggered by **EventBridge**, post-processed
+by **Lambda**, surfaced in **QuickSight**. The implemented core of that path (the
+SageMaker training/transform scripts) is preserved under `legacy/`; the Step
+Functions / Lambda / QuickSight orchestration is design, not running code. The
+rebuilt system in `src/` is cloud-agnostic and was validated on GCP.
 
 ---
 
 ## Tech Stack
 
-* **Modeling:** Python, LightGBM (Tweedie Objective), Pandas, NumPy, Scikit-Learn
-* **Cloud Infrastructure:** AWS Step Functions, AWS SageMaker (Batch Transform), AWS Lambda, Amazon S3, Amazon EventBridge
-* **Analytics & BI:** Amazon QuickSight
+* **Modeling:** Python, LightGBM (Tweedie), XGBoost (multi-quantile), Pandas, NumPy
+* **Validation & testing:** rolling-origin CV, pytest (30 tests incl. leakage)
+* **Compute:** GCP Compute Engine + Cloud Storage
+* **Deployment (target/legacy):** AWS SageMaker Batch Transform, Step Functions,
+  Lambda, S3, EventBridge, QuickSight
 
 ---
 
-## Evaluation & Results
+## Repository layout
 
-The system was evaluated using **WRMSSE** (Weighted Root Mean Squared Scaled Error), a metric that penalizes errors on high-value items more heavily than low-value ones.
+```
+src/         data, features, cache, metrics (WRMSSE + WSPL), CV harness,
+             quantile forecasting, newsvendor inventory sim, baseline/submission
+tests/       30 tests: metrics, economics, and the leakage guarantee
+docs/        01-data · 02-wrmsse · 03-baseline · 04-validation · 05-features
+             · 06-results · 07-uncertainty · 08-inventory · experiment logs
+scripts_vm/  cloud run scripts
+legacy/      the original SageMaker/Docker attempt (kept, not used)
+```
 
-* **Validation Performance:** The model achieved a **WRMSSE of 0.58**.
-* **Impact:** This accuracy outperforms the seasonal naive baseline by **>40%** and aligns with the top 5% of solutions on the global leaderboard, demonstrating the effectiveness of the Tweedie loss formulation for large-scale retail data.
+## Quickstart
+
+```bash
+pip install -r requirements.txt          # place the M5 CSVs in data/ (see docs/01-data.md)
+PYTHONPATH=. pytest tests/ -q            # 30 tests
+
+# Point forecast: train + score on the held-out window
+python -m src.cv --name best --train-start-day 300 --day-floor 300 --final-test
+
+# Uncertainty: nine-quantile forecasts
+python -m src.run_uncertainty --name q --fold final --train-start-day 1750 \
+    --day-floor 300 --backend xgboost --device cpu --save-preds
+
+# Inventory: newsvendor policy + cost/service trade-off
+python -m src.run_inventory --quantiles "outputs/predictions/quantiles_*.parquet"
+```
+
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [01-data](docs/01-data.md) | Dataset, files, timeline, quirks |
+| [02-metric-wrmsse](docs/02-metric-wrmsse.md) | WRMSSE, explained and validated |
+| [03-baseline](docs/03-baseline.md) | Baseline model and design choices |
+| [04-validation](docs/04-validation.md) | Rolling-origin CV strategy |
+| [05-features](docs/05-features.md) | Feature groups and what did/didn't work |
+| [06-results](docs/06-results.md) | Headline results, noise finding, submission |
+| [07-uncertainty](docs/07-uncertainty.md) | Quantile forecasting + WSPL |
+| [08-inventory](docs/08-inventory.md) | **Newsvendor policy, simulation, trade-off** |
