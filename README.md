@@ -1,157 +1,221 @@
-# M5 Walmart Forecasting
+# End-to-End Demand Forecasting → Inventory Optimization
 
-A clean, local-first reimplementation of the
-[M5 Forecasting – Accuracy](https://www.kaggle.com/competitions/m5-forecasting-accuracy)
-Kaggle competition: forecast **28 days** of daily unit sales for **30,490**
-Walmart item-store series, scored by **WRMSSE** across 12 aggregation levels.
+Predict daily unit sales for **30,490 Walmart item-store series**, quantify the
+*uncertainty* around each forecast, and turn that uncertainty into **stocking
+decisions** whose cost is measured against real held-out demand.
 
-This repo was rebuilt from scratch with three priorities: **everything runs
-reproducibly**, **everything is measured** against real held-out ground truth,
-and **everything is documented**.
+The project is deliberately built in two halves, because a forecast is not a
+decision:
 
-The repo covers **two linked projects**:
+1. **Demand forecasting** — a global LightGBM point model (WRMSSE) *and* a
+   nine-quantile distributional model (weighted scaled pinball loss).
+2. **Inventory / replenishment** — a newsvendor policy on top of those quantiles,
+   simulated against actuals, reporting fill rate and cost. *This is what makes
+   the forecast worth anything.*
 
-1. **Demand forecasting** — point forecasts (WRMSSE) *and* the uncertainty track
-   (nine quantiles, weighted scaled pinball loss).
-2. **Inventory / replenishment** — turning those quantiles into stocking
-   decisions and costing them. *This is the part that makes the forecast useful.*
+Everything here is **measured on a frozen held-out window, reproducible, and
+covered by 30 automated tests** — including a leakage test that proves no feature
+sees the future. Where a result is limited, this README says so.
+
+---
 
 ## Results at a glance
 
-**Project 1 — forecasting** (held-out window d1914–1941)
+**Forecasting** (held-out window d1914–1941, scored once)
 
 | | value |
 |---|---|
-| **Held-out final test WRMSSE** — frozen, scored once | **0.6475** |
+| **Held-out WRMSSE** (point forecast) | **0.6475** |
 | 3-fold rolling-origin CV mean (steering metric) | 0.6401 |
-| Seasonal-naive reference | ~1.08 |
-| Bottom-level weighted SPL (9 quantiles) | 0.2618 |
+| Seasonal-naive baseline | ~1.08 → we are **~40% better** |
+| Bottom-level weighted SPL (9 quantiles) | 0.2606 |
 
-CV and held-out agree within 0.007 — the validation scheme was not overfit.
-See [docs/06-results.md](docs/06-results.md).
+CV and held-out agree within 0.007 — the validation scheme was **not** overfit,
+which was the single most common M5 failure mode.
 
-**Project 2 — inventory decision** (same held-out window, 30,490 series)
+**Inventory decision** (same window, all 30,490 series, `Cu`=0.30·price, `Co`=0.03·price)
 
 | policy | fill rate | **total cost** |
 |---|---|---|
 | order the median forecast | 47.6% | 681,517 |
 | **newsvendor `Q* = F⁻¹(CR)`** | **92.5%** | **317,730 (−53%)** |
 
-And the check that ties it together: the **empirically cost-minimising service
-level (0.900)** matches the **theoretical critical ratio (0.909)**. Optimising the
-forecast and optimising the *decision* give different answers — which is the whole
-reason supply chains forecast distributions. See
+And the check that ties theory to practice: the **empirically cost-minimising
+service level (0.900)** matches the **theoretical critical ratio (0.909)**.
+
+> **Honest scope note.** WRMSSE 0.6475 is a solid, fully-reproducible single-model
+> result — not a leaderboard-topping one (strong public single models reach ~0.52
+> via heavy tuning / per-store models / ensembling, deliberately out of scope
+> here). The quantile model is data-limited (see *Uncertainty*), so its SPL is a
+> working number, not a competitive one. The value of this project is the honest,
+> end-to-end pipeline from raw data to a costed decision — not a single metric.
+
+---
+
+## The Business Problem
+
+For a retailer, "sales forecasting" alone is insufficient: it ignores demand lost
+during stockouts, and it says nothing about *how much to order*. This project
+targets **demand forecasting → replenishment** to manage two costly risks:
+
+1. **Stock-outs** — lost revenue when demand exceeds what's on the shelf.
+2. **Overstocking** — holding, markdown and spoilage cost on slow-moving items.
+
+The catch that makes it hard: roughly **60% of the bottom-level series are zeros**
+(intermittent demand). The right order quantity for such items is emphatically
+*not* the average forecast — it's a tail quantile — which is why the project
+carries the demand *distribution* all the way through to the decision.
+
+---
+
+## Solution Part 1 — The Forecasting Model
+
+A single **global LightGBM** (one model learning across all series, not 30k local
+ones), chosen and configured for retail's specific quirks.
+
+### Handling intermittent demand (the Tweedie advantage)
+Standard RMSE treats the many zeros as noise and under-forecasts. The model uses
+a **Tweedie objective** (`variance_power=1.1`), a compound Poisson-Gamma loss that
+jointly captures *whether* an item sells and *how much* — a large improvement on
+slow-moving inventory over RMSE/Poisson.
+
+### Feature engineering
+The base recipe is ~30 features capturing temporal dynamics and pricing:
+* **Lags & rolling stats** — sales lags (28–35) and rolling mean/std, all **≥ 28
+  days** so one model forecasts the whole 28-day horizon with no recursion and no
+  leakage.
+* **Price** — price vs. its own history (momentum), a proxy for elasticity.
+* **Calendar** — events, and per-state **SNAP** (food-stamp) flags, which move
+  FOODS demand materially.
+
+Additional feature groups (longer rolling windows, richer price/calendar signals)
+were implemented and **A/B-tested on CV — and shelved because they produced no
+measurable gain** at fixed hyperparameters. Reporting what *didn't* work is part
+of the point; see [docs/05-features.md](docs/05-features.md).
+
+### How it's validated
+Rolling-origin backtests on three 28-day windows (never random splits), steering
+on the CV mean, with d1914–1941 held out and touched once. See
+[docs/04-validation.md](docs/04-validation.md).
+
+---
+
+## Solution Part 2 — Uncertainty (the distribution)
+
+The inventory decision needs `F⁻¹`, not a point estimate — so the model also
+forecasts **nine quantiles** (`0.005 … 0.995`) and is scored with **WSPL**
+(weighted scaled pinball loss), the official M5 uncertainty metric.
+
+* Direct quantile regression — either nine LightGBM fits or, faster, **one
+  XGBoost multi-output fit** (`reg:quantileerror` over all nine alphas at once).
+* Independent fits can cross (`q_0.005 > q_0.995`); predictions are **sorted per
+  (series, day)** to stay a valid distribution.
+
+**Limitation, stated plainly:** this model is trained on ~4.1M rows (vs. the point
+model's 42M) because multi-quantile training is expensive. A retrain at 4× the
+rounds moved SPL only 0.2618 → 0.2606 — proving **rounds aren't the bottleneck,
+training-data volume is.** More data is the clearest remaining win. See
+[docs/07-uncertainty.md](docs/07-uncertainty.md).
+
+---
+
+## Solution Part 3 — Inventory / Replenishment (the differentiator)
+
+The **newsvendor model** turns a demand distribution into an order quantity:
+
+```
+critical ratio  CR = Cu / (Cu + Co)          # Cu = shortage cost, Co = overage cost
+optimal order   Q* = F⁻¹(CR)                 # a QUANTILE of demand, not the mean
+```
+
+Because stockouts cost more than leftovers (`Cu > Co`), `CR > 0.5` and the optimal
+order sits **above** the point forecast. We simulate a periodic-review policy
+against **actual realised demand**, carrying inventory over day to day, and report
+fill rate, stockout rate, and holding/shortage/total cost.
+
+**Result:** the newsvendor policy cuts total cost **−53%** and lifts fill rate
+**47.6% → 92.5%** vs. ordering the point forecast. The sharpest finding: with ~60%
+zeros, the median forecast is *0* for most SKU-days, so "order the forecast"
+literally means "stock nothing" — no amount of extra WRMSSE tuning fixes that;
+you need the distribution.
+
+The simulation also supports a non-zero **lead time**, where stock must cover the
+`L+R`-day protection interval. Since **quantiles are not additive**, that interval
+is built by sampling demand paths and re-extracting the quantile. Full analysis,
+including the service-level/cost trade-off curve, in
 [docs/08-inventory.md](docs/08-inventory.md).
+
+---
+
+## Engineering, Reproducibility & Deployment
+
+**Reproducibility is a first-class feature here.** Pinned dependencies (an
+unpinned `>=` silently changed a result mid-project); `deterministic=True` after
+measuring ±0.01 run-to-run noise; a feature cache; an experiment ledger; and **30
+tests** pinning the metrics, the economics, and the no-leakage guarantee.
+
+Large training runs were executed on **GCP** (`e2-highmem` / `n2-highmem` VMs,
+driven by the scripts in `scripts_vm/`), staged through GCS, and torn down after
+each run.
+
+**Target production architecture (design).** The original deployment was aimed at
+a serverless **AWS** batch-inference pipeline — **SageMaker Batch Transform**
+orchestrated by **Step Functions**, triggered by **EventBridge**, post-processed
+by **Lambda**, surfaced in **QuickSight**. The implemented core of that path (the
+SageMaker training/transform scripts) is preserved under `legacy/`; the Step
+Functions / Lambda / QuickSight orchestration is design, not running code. The
+rebuilt system in `src/` is cloud-agnostic and was validated on GCP.
+
+---
+
+## Tech Stack
+
+* **Modeling:** Python, LightGBM (Tweedie), XGBoost (multi-quantile), Pandas, NumPy
+* **Validation & testing:** rolling-origin CV, pytest (30 tests incl. leakage)
+* **Compute:** GCP Compute Engine + Cloud Storage
+* **Deployment (target/legacy):** AWS SageMaker Batch Transform, Step Functions,
+  Lambda, S3, EventBridge, QuickSight
+
+---
+
+## Repository layout
+
+```
+src/         data, features, cache, metrics (WRMSSE + WSPL), CV harness,
+             quantile forecasting, newsvendor inventory sim, baseline/submission
+tests/       30 tests: metrics, economics, and the leakage guarantee
+docs/        01-data · 02-wrmsse · 03-baseline · 04-validation · 05-features
+             · 06-results · 07-uncertainty · 08-inventory · experiment logs
+scripts_vm/  cloud run scripts
+legacy/      the original SageMaker/Docker attempt (kept, not used)
+```
 
 ## Quickstart
 
 ```bash
-pip install -r requirements.txt          # pandas, numpy, lightgbm, pyarrow
-# Put the competition CSVs in data/ (see docs/01-data.md)
+pip install -r requirements.txt          # place the M5 CSVs in data/ (see docs/01-data.md)
+PYTHONPATH=. pytest tests/ -q            # 30 tests
 
-# Train + score the baseline on the validation window (d_1914..d_1941):
-python -m src.baseline --mode validation --train-start-day 1300
+# Point forecast: train + score on the held-out window
+python -m src.cv --name best --train-start-day 300 --day-floor 300 --final-test
 
-# Produce a Kaggle submission for the evaluation window (d_1942..d_1969):
-python -m src.baseline --mode evaluation --train-start-day 1300
-```
+# Uncertainty: nine-quantile forecasts
+python -m src.run_uncertainty --name q --fold final --train-start-day 1750 \
+    --day-floor 300 --backend xgboost --device cpu --save-preds
 
-`validation` mode prints a **WRMSSE** score (it has local ground truth);
-`evaluation` mode writes a submission to `outputs/submissions/`.
-
-```bash
-# Uncertainty track: fit the nine quantiles and score bottom-level SPL
-python -m src.run_uncertainty --name q --fold final --train-start-day 1750     --day-floor 300 --n-estimators 150 --backend xgboost --device cpu --save-preds
-
-# Project 2: turn those quantiles into stocking decisions and cost them
+# Inventory: newsvendor policy + cost/service trade-off
 python -m src.run_inventory --quantiles "outputs/predictions/quantiles_*.parquet"
 ```
-
-## Layout
-
-```
-data/                Raw competition CSVs (see docs/01-data.md)
-src/
-  config.py          Paths, competition constants, day boundaries
-  data.py            Loaders + per-store melt + memory downcasting
-  features.py        Feature engineering (single source of truth)
-  dataset.py         Build-once feature cache (engineer features, slice per fold)
-  hierarchy.py       Shared 12-level aggregation + dollar weights
-  wrmsse.py          WRMSSE metric (Accuracy track)
-  wspl.py            WSPL metric (Uncertainty track, 9 quantiles)
-  quantile.py        Quantile forecasting (LightGBM CPU / XGBoost multi-quantile)
-  inventory.py       Newsvendor policy + inventory simulation (Project 2)
-  cv.py              Cross-validation harness + experiment log
-  baseline.py        Global LightGBM: train -> predict -> score -> submit
-outputs/
-  models/            Saved LightGBM boosters (.txt)
-  predictions/       Wide prediction frames
-  submissions/       Kaggle-format F1..F28 files
-  cache/             Cached engineered features (Parquet)
-  experiments.csv    Machine-readable experiment ledger
-docs/                Written explanations (data, metric, validation, baseline)
-notebooks/reference/ Public reference notebooks (read-only, for ideas)
-legacy/              Previous attempt (SageMaker/Docker) - kept, not used
-```
-
-## Tests
-
-Correctness is pinned by an automated suite — run it before trusting any number:
-
-```bash
-pip install pytest
-PYTHONPATH=. python -m pytest tests/ -q
-```
-
-| Test | What it guarantees |
-|------|--------------------|
-| `tests/test_wrmsse.py` | A perfect forecast scores exactly 0; naive baselines reproduce known M5 magnitudes (last-day ≈1.46, 28-day-mean ≈1.08); the score is always finite (regression test for a zero-scale divide-by-zero). |
-| `tests/test_leakage.py` | **The critical one.** Rebuilds features with all future actuals erased and asserts the forecast-window features are byte-identical — proving no feature peeks at the future, and that the build-once-slice-many cache is valid. Also guards that every sales lag ≥ 28 days. |
-| `tests/test_wspl.py` | Pinball loss is 0 for a perfect forecast, symmetric at u=0.5, and at u=0.995 punishes under-forecasting exactly 199× — the asymmetry can't silently invert. Modelling a spread must beat collapsing to the mean. |
-| `tests/test_inventory.py` | The **economics**: Cu==Co ⇒ critical ratio 0.5; order-up-to levels are monotone in service level and never extrapolate; simulation mechanics (perfect foresight ⇒ zero cost, carryover reduces ordering); and the headline claim that the newsvendor quantile policy beats ordering the mean. |
-
-The leakage test is the one to re-run if short/recursive lags (< 28) are ever
-introduced — it is precisely the test that will fail.
-
-## Iterating
-
-We improve the model one measured experiment at a time. Evaluate any config on
-the cross-validation folds and append the result to the experiment log:
-
-```bash
-python -m src.cv --name my_experiment --desc "what changed"
-```
-
-See [docs/04-validation.md](docs/04-validation.md) for the fold design (we steer
-on the **CV mean** and keep d_1914–1941 as a held-out test) and
-[docs/experiments.md](docs/experiments.md) for the running results.
-
-## The approach (baseline)
-
-A single **global LightGBM** with a **Tweedie** objective (right for
-intermittent, non-negative demand) and **non-recursive** lag/rolling features
-(every lag ≥ 28 days, so one model forecasts the whole 28-day horizon with no
-recursion and no leakage). Feature engineering runs **one store at a time** to
-keep peak memory bounded. See [docs/03-baseline.md](docs/03-baseline.md) for the
-full writeup and the recorded score.
-
-## How we measure
-
-We train only on d_1..d_1913 and score the validation window d_1914..d_1941
-locally with WRMSSE (ground truth lives in `sales_train_evaluation.csv`). The
-metric and its reference-value sanity checks are in
-[docs/02-metric-wrmsse.md](docs/02-metric-wrmsse.md).
 
 ## Documentation
 
 | Doc | Contents |
 |-----|----------|
-| [docs/01-data.md](docs/01-data.md) | The dataset, files, timeline, and quirks |
-| [docs/02-metric-wrmsse.md](docs/02-metric-wrmsse.md) | The WRMSSE metric, explained and validated |
-| [docs/03-baseline.md](docs/03-baseline.md) | Baseline model, design choices, results |
-| [docs/04-validation.md](docs/04-validation.md) | Cross-validation strategy and the experiment log |
-| [docs/05-features.md](docs/05-features.md) | Feature groups, rationale, and what did/didn't work |
-| [docs/07-uncertainty.md](docs/07-uncertainty.md) | Quantile forecasting, pinball loss, WSPL |
-| [docs/08-inventory.md](docs/08-inventory.md) | **Project 2**: newsvendor policy, simulation, cost/service trade-off |
-| [docs/06-results.md](docs/06-results.md) | **Headline results**, measurement-noise finding, limitations |
-| [docs/experiments.md](docs/experiments.md) | Running results of every experiment |
+| [01-data](docs/01-data.md) | Dataset, files, timeline, quirks |
+| [02-metric-wrmsse](docs/02-metric-wrmsse.md) | WRMSSE, explained and validated |
+| [03-baseline](docs/03-baseline.md) | Baseline model and design choices |
+| [04-validation](docs/04-validation.md) | Rolling-origin CV strategy |
+| [05-features](docs/05-features.md) | Feature groups and what did/didn't work |
+| [06-results](docs/06-results.md) | Headline results, noise finding, submission |
+| [07-uncertainty](docs/07-uncertainty.md) | Quantile forecasting + WSPL |
+| [08-inventory](docs/08-inventory.md) | **Newsvendor policy, simulation, trade-off** |
