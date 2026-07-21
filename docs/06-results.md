@@ -75,6 +75,21 @@ the noise floor, prefer multi-seed averaging over a single run.
   weighted scaled pinball loss) is a separate deliverable — and it is the
   prerequisite for the inventory work. See `docs/07-uncertainty.md`.
 
+## Competition submission
+
+`outputs/submissions/submission_best_evaluation.csv` is the forecast for the
+private window **d1942–1969**, produced by retraining the best point config
+(`train_start=300`) on all data through d1941:
+
+```bash
+python -m src.baseline --mode evaluation --train-start-day 300 --tag best
+```
+
+30,490 rows in Kaggle `F1..F28` format, all `_evaluation` ids, non-negative. This
+is the half of the competition that was never scoreable locally (labels never
+released). A full Kaggle upload would also include the 30,490 `_validation` rows
+(d1914–1941), whose labels are now public and which we score directly instead.
+
 ## Correctness guarantees
 
 Not just asserted — tested (`tests/`, all passing):

@@ -103,17 +103,21 @@ Final held-out window d1914–1941, XGBoost multi-quantile:
 | Bottom-level weighted SPL | **0.2618** |
 | Quantile-crossing rate (pre-sort) | 16.9% (corrected by sorting) |
 
-⚠️ **This model is deliberately under-trained** (`train_start=1750`, 4.1M rows,
-150 rounds) because multi-quantile training is expensive — every boosting round
-grows nine trees, and the full-size config was heading for 2+ hours. It exists to
-**unblock the inventory work**, which is the actual deliverable; the quantiles are
-good enough that newsvendor theory validates on real data (see
-[08-inventory.md](08-inventory.md)), but the SPL number is *not* a
-competitive result and should not be read as one.
+⚠️ **This model is trained on limited data** (`train_start=1750`, 4.1M rows) — far
+less than the point model's 42M — because multi-quantile training is expensive
+(every boosting round grows nine trees). It exists to make the inventory work
+real; the SPL number is **not** a competitive result and should not be read as
+one.
 
-The 16.9% crossing rate is itself a symptom of under-training: the nine outputs
-haven't converged enough to be reliably ordered. A fuller fit would reduce it.
-Improving this model is the clearest remaining win in the project.
+**A useful negative finding.** We retrained at 600 rounds to see if the first
+result (150 rounds, SPL 0.2618) was under-fit. It was not: validation loss
+plateaued by ~round 200 and 600 rounds only reached **SPL 0.2606** — a rounding-
+error improvement — while the pre-sort crossing rate *worsened* from 16.9% to
+55.8%. More rounds just overfit each quantile independently. So **rounds were
+never the constraint; training-data volume is.** The clear next win is more data
+(lower `train_start`), which needs a longer compute budget. High crossing is a
+symptom of the same data starvation; sorting keeps the output a valid
+distribution regardless.
 
 ## Correctness guarantees
 

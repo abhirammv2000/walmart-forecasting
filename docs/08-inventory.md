@@ -131,12 +131,42 @@ demand** actually bottoms out. That is a genuine end-to-end check: it says the
 forecast distribution is calibrated well enough that the theory transfers to real
 data, rather than the policy just happening to work.
 
-## Honest limitations
+## Lead time and the protection interval
 
-* **Lead time is zero** and review is daily. Real replenishment has a lead time
-  `L`, which means you need the distribution of demand over `L + R` days — and
-  because quantiles don't add, that is *not* the sum of daily quantiles. Doing it
-  properly needs either multi-horizon quantile models or simulated sample paths.
+The `L=0` result above assumes stock arrives instantly. Real replenishment has a
+**lead time** `L`: an order placed today lands `L` days later, so today's order is
+your last lever over stock until the *next* order arrives — it must cover demand
+over the **protection interval** `W = L + R` days, not one.
+
+This is where the "quantiles don't add" point becomes concrete. The 90th
+percentile of 3-day demand is **not** the sum of three daily 90th percentiles —
+that assumes all three bad days coincide. Instead we **sample** from each day's
+quantile function (independently), sum the sample paths over the window, and read
+the quantile off the *summed* distribution (`protection_interval_levels`). The
+simulation also tracks an order pipeline so goods in transit aren't re-ordered.
+
+**Result at `L=2` (3-day protection interval), same held-out window:**
+
+| policy | fill rate | **total cost** |
+|---|---|---|
+| order the median forecast | 61.1% | 566,627 |
+| newsvendor `Q* = F⁻¹(0.909)` | 85.2% | 509,432 (**−10.1%**) |
+
+Two honest observations:
+
+1. **The newsvendor edge shrinks with lead time** (−53% at `L=0` → −10% at
+   `L=2`). Committing stock further ahead against a longer-horizon forecast is
+   simply harder, and everyone's costs rise.
+2. **Theory and practice start to diverge**: the empirical cost-minimising
+   service level drops to **0.800**, below the theoretical critical ratio
+   (0.909). The clean `L=0` agreement relied on the daily forecast being well
+   calibrated; over a 3-day window our sampled distribution assumes **daily
+   independence** (ignoring autocorrelation) and inherits the forecast's
+   longer-horizon degradation, so the theory no longer lands exactly. Modelling
+   multi-day demand directly — rather than sampling independent days — is the fix,
+   and is recorded as future work.
+
+## Other honest limitations
 * **No capacity, batching, or MOQ constraints** — no case packs, shelf limits, or
   supplier minimums.
 * **Costs are assumed**, not observed. Real `Cu`/`Co` vary by category (fresh
