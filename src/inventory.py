@@ -88,10 +88,75 @@ def order_up_to_levels(quantile_cube: np.ndarray, quantiles: np.ndarray,
     return (1.0 - w) * quantile_cube[:, :, lo] + w * quantile_cube[:, :, hi]
 
 
+def sample_demand_paths(quantile_cube: np.ndarray, quantiles: np.ndarray,
+                        n_samples: int = 100, seed: int = 0) -> np.ndarray:
+    """Draw demand samples per (series, day) by inverting the quantile function.
+
+    We only have nine points of ``F``, so we treat the quantile function as
+    piecewise linear between them and push uniform draws through it. Returns
+    ``(n_series, n_days, n_samples)`` as float32 to keep memory sane.
+    """
+    rng = np.random.default_rng(seed)
+    n_series, n_days, n_q = quantile_cube.shape
+    out = np.empty((n_series, n_days, n_samples), dtype=np.float32)
+
+    # Draw INDEPENDENTLY per (series, day, sample). Sharing one uniform across
+    # days would make every day land at the same percentile - perfectly
+    # correlated paths whose sum just reproduces naive quantile summation, which
+    # is exactly the error this function exists to avoid.
+    # Generated a day at a time to keep peak memory bounded.
+    for t in range(n_days):
+        u = rng.random((n_series, n_samples))
+        u = np.clip(u, quantiles[0], quantiles[-1])   # don't extrapolate
+        hi = np.clip(np.searchsorted(quantiles, u, side="left"), 1, n_q - 1)
+        lo = hi - 1
+        q_lo, q_hi = quantiles[lo], quantiles[hi]
+        span = q_hi - q_lo
+        w = np.where(span > 0, (u - q_lo) / np.where(span > 0, span, 1.0), 0.0)
+        cube_t = quantile_cube[:, t, :]
+        v_lo = np.take_along_axis(cube_t, lo, axis=1)
+        v_hi = np.take_along_axis(cube_t, hi, axis=1)
+        out[:, t, :] = ((1.0 - w) * v_lo + w * v_hi).astype(np.float32)
+    return out
+
+
+def protection_interval_levels(quantile_cube: np.ndarray, quantiles: np.ndarray,
+                               service_level: float, lead_time: int = 0,
+                               review_period: int = 1, n_samples: int = 100,
+                               seed: int = 0) -> np.ndarray:
+    """Order-up-to level covering demand over the protection interval.
+
+    With a lead time ``L`` and review period ``R``, an order placed now is the
+    last chance to influence stock until the *next* order arrives - so the
+    order-up-to level must cover demand over ``W = L + R`` days, not one day.
+
+    **Why this needs sampling.** Quantiles are not additive: the 90th percentile
+    of three-day demand is *not* the sum of three daily 90th percentiles (that
+    would assume all three extremes land together, badly overstating the
+    spread). So we draw sample paths from the daily distributions, sum them
+    across the protection interval, and read the quantile off the *summed*
+    distribution - which is coherent.
+
+    Assumes demand is independent across days. That ignores autocorrelation and
+    so understates the spread somewhat; modelling multi-day demand directly
+    would remove the assumption.
+    """
+    n_series, n_days, _ = quantile_cube.shape
+    window = max(1, lead_time + review_period)
+    paths = sample_demand_paths(quantile_cube, quantiles, n_samples, seed)
+
+    levels = np.empty((n_series, n_days), dtype=np.float64)
+    for t in range(n_days):
+        end = min(t + window, n_days)              # clip at the horizon edge
+        total = paths[:, t:end, :].sum(axis=1)     # (n_series, n_samples)
+        levels[:, t] = np.quantile(total, service_level, axis=1)
+    return levels
+
+
 def simulate(order_up_to: np.ndarray, demand: np.ndarray, price: np.ndarray,
              underage_frac: float = DEFAULT_UNDERAGE_FRAC,
              overage_frac: float = DEFAULT_OVERAGE_FRAC,
-             carryover: bool = True) -> dict[str, float]:
+             carryover: bool = True, lead_time: int = 0) -> dict[str, float]:
     """Run the stocking policy against realised demand and cost the outcome.
 
     Periodic review with an order-up-to level: each day we top inventory up to
@@ -115,34 +180,47 @@ def simulate(order_up_to: np.ndarray, demand: np.ndarray, price: np.ndarray,
     co = overage_frac * price
 
     on_hand = np.zeros(n_series, dtype=np.float64)
+    # Orders placed at t arrive at t + lead_time; until then they sit "on order"
+    # and must still be counted, or we would re-order the same units every day.
+    pipeline = np.zeros((n_series, n_days + lead_time + 1), dtype=np.float64)
+
     tot_sold = tot_demand = tot_lost = 0.0
     tot_holding = tot_shortage = 0.0
     tot_units_ordered = 0.0
     stockout_days = 0
 
     for t in range(n_days):
+        on_hand += pipeline[:, t]                    # receive today's arrivals
+        pipeline[:, t] = 0.0
+        on_order = pipeline[:, t:].sum(axis=1)       # still in transit
+
         target = order_up_to[:, t]
         if carryover:
-            order = np.maximum(0.0, target - on_hand)   # top up; can't un-order
-            available = on_hand + order
+            # Order against the inventory *position* (on hand + on order).
+            order = np.maximum(0.0, target - on_hand - on_order)
         else:
             order = target
-            available = target
+
+        if lead_time == 0:
+            on_hand += order                          # arrives immediately
+        else:
+            pipeline[:, t + lead_time] += order
 
         d = demand[:, t]
-        sold = np.minimum(d, available)
+        sold = np.minimum(d, on_hand)                 # can only sell what's here
         lost = d - sold
-        leftover = available - sold
+        on_hand -= sold
 
         tot_units_ordered += float(order.sum())
         tot_sold += float(sold.sum())
         tot_demand += float(d.sum())
         tot_lost += float(lost.sum())
         tot_shortage += float((cu[:, t] * lost).sum())
-        tot_holding += float((co[:, t] * leftover).sum())   # end-of-day stock
+        tot_holding += float((co[:, t] * on_hand).sum())   # end-of-day stock
         stockout_days += int((lost > 0).sum())
 
-        on_hand = leftover if carryover else np.zeros_like(leftover)
+        if not carryover:
+            on_hand = np.zeros_like(on_hand)
 
     return {
         "fill_rate": tot_sold / tot_demand if tot_demand else np.nan,
