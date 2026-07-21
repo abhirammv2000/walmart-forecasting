@@ -166,3 +166,66 @@ def _poisson_ppf(q: float, lam: float) -> float:
         k += 1
         p *= lam / k
     return float(k)
+
+
+# --------------------------------------------------------------------------- #
+# Lead time and the protection interval
+# --------------------------------------------------------------------------- #
+def test_lead_time_zero_matches_immediate_replenishment(cube):
+    """lead_time=0 must reproduce the original instant-replenishment behaviour."""
+    c, q = cube
+    demand = np.full((2, 3), 3.0)
+    price = np.ones((2, 3))
+    target = np.full((2, 3), 5.0)
+    a = inv.simulate(target, demand, price, lead_time=0)
+    b = inv.simulate(target, demand, price)          # default
+    assert a == b
+
+
+def test_lead_time_causes_early_stockouts():
+    """Nothing can be sold before the first delivery arrives."""
+    demand = np.full((1, 6), 2.0)
+    price = np.ones((1, 6))
+    target = np.full((1, 6), 10.0)
+    fast = inv.simulate(target, demand, price, lead_time=0)
+    slow = inv.simulate(target, demand, price, lead_time=3)
+    assert slow["units_lost"] > fast["units_lost"]
+    assert slow["fill_rate"] < fast["fill_rate"]
+
+
+def test_pipeline_prevents_double_ordering():
+    """Ordering against inventory *position* must not re-order goods in transit.
+
+    If on-order stock were ignored, we would order the full target every day
+    during the lead time and massively over-buy.
+    """
+    demand = np.zeros((1, 8))
+    price = np.ones((1, 8))
+    target = np.full((1, 8), 10.0)
+    m = inv.simulate(target, demand, price, lead_time=3)
+    # With zero demand, total ordered should converge to the target, not 8x it.
+    assert m["units_ordered"] == pytest.approx(10.0, abs=1e-6)
+
+
+def test_protection_interval_grows_with_lead_time(cube):
+    """Longer exposure must require covering more demand."""
+    c, q = cube
+    s0 = inv.protection_interval_levels(c, q, 0.9, lead_time=0, n_samples=200)
+    s2 = inv.protection_interval_levels(c, q, 0.9, lead_time=2, n_samples=200)
+    assert s2[:, 0].mean() > s0[:, 0].mean()
+
+
+def test_multiday_quantile_is_below_naive_sum_of_daily_quantiles(cube):
+    """The headline statistical point: quantiles are NOT additive.
+
+    Summing daily 90th percentiles assumes every day's extreme lands together.
+    Aggregating sample paths correctly gives a *smaller* number - which is why
+    naive summation over-stocks.
+    """
+    c, q = cube
+    window = 3
+    correct = inv.protection_interval_levels(c, q, 0.9, lead_time=window - 1,
+                                             n_samples=500)[:, 0]
+    daily_q = inv.order_up_to_levels(c, q, 0.9)[:, 0]
+    naive_sum = daily_q * window
+    assert (correct < naive_sum).all(), "sampling must beat naive quantile summation"

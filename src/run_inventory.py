@@ -103,6 +103,14 @@ def main():
     ap.add_argument("--overage-frac", type=float, default=inventory.DEFAULT_OVERAGE_FRAC)
     ap.add_argument("--no-carryover", action="store_true",
                     help="Treat each day as an independent newsvendor period.")
+    ap.add_argument("--lead-time", type=int, default=0,
+                    help="Days between placing and receiving an order. >0 makes "
+                         "the order-up-to level cover the L+R protection interval, "
+                         "derived by sampling (quantiles are not additive).")
+    ap.add_argument("--review-period", type=int, default=1,
+                    help="Days between ordering opportunities.")
+    ap.add_argument("--n-samples", type=int, default=100,
+                    help="Sample paths used to build multi-day demand quantiles.")
     args = ap.parse_args()
 
     matches = sorted(glob.glob(args.quantiles))
@@ -122,14 +130,29 @@ def main():
     print(f"  series={cube.shape[0]:,}  days={cube.shape[1]}  quantiles={cube.shape[2]}")
     print(f"  Cu={cu:.3f}*price  Co={co:.3f}*price  ->  critical ratio = {cr:.4f}")
 
+    L, R = args.lead_time, args.review_period
+    if L > 0:
+        print(f"  lead time={L}d, review={R}d -> order-up-to covers a {L+R}-day "
+              f"protection interval (built from {args.n_samples} sample paths, "
+              f"since quantiles are not additive)")
+
+    def _levels(service: float) -> np.ndarray:
+        if L > 0:
+            return inventory.protection_interval_levels(
+                cube, qs, service, lead_time=L, review_period=R,
+                n_samples=args.n_samples)
+        return inventory.order_up_to_levels(cube, qs, service)
+
     # --- the headline comparison ------------------------------------------- #
     policies = {
-        "mean_forecast (order the median)": inventory.mean_forecast_policy(cube, qs),
-        f"newsvendor (order Q* at CR={cr:.3f})": inventory.order_up_to_levels(cube, qs, cr),
+        "mean_forecast (order the median)": (
+            _levels(0.5) if L > 0 else inventory.mean_forecast_policy(cube, qs)),
+        f"newsvendor (order Q* at CR={cr:.3f})": _levels(cr),
     }
     rows = []
     for name, q in policies.items():
-        m = inventory.simulate(q, demand, price, cu, co, carryover=carry)
+        m = inventory.simulate(q, demand, price, cu, co, carryover=carry,
+                               lead_time=L)
         m["policy"] = name
         rows.append(m)
     comp = pd.DataFrame(rows).set_index("policy")
@@ -145,14 +168,21 @@ def main():
     print(f"  fill rate: {comp['fill_rate'].iloc[0]:.3%} -> "
           f"{comp['fill_rate'].iloc[1]:.3%}")
 
-    comp_path = config.OUTPUT_DIR / "inventory_policy_comparison.csv"
+    suffix = f"_L{L}" if L > 0 else ""
+    comp_path = config.OUTPUT_DIR / f"inventory_policy_comparison{suffix}.csv"
     comp.to_csv(comp_path)
 
     # --- trade-off curve ---------------------------------------------------- #
     print("\n=== Service-level / cost trade-off ===")
-    curve = inventory.service_level_curve(cube, qs, demand, price,
-                                          underage_frac=cu, overage_frac=co,
-                                          carryover=carry)
+    levels_grid = np.array([0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90,
+                            0.925, 0.95, 0.965, 0.975, 0.985, 0.995])
+    rows = []
+    for s_lvl in levels_grid:
+        m = inventory.simulate(_levels(float(s_lvl)), demand, price, cu, co,
+                               carryover=carry, lead_time=L)
+        m["service_level"] = float(s_lvl)
+        rows.append(m)
+    curve = pd.DataFrame(rows).set_index("service_level")
     print(curve[["fill_rate", "holding_cost", "shortage_cost", "total_cost"]]
           .to_string(float_format=lambda v: f"{v:,.2f}"))
 
@@ -160,7 +190,7 @@ def main():
     print(f"\n  empirical cost-minimising service level = {best:.3f}")
     print(f"  theoretical critical ratio               = {cr:.3f}")
 
-    curve_path = config.OUTPUT_DIR / "inventory_service_curve.csv"
+    curve_path = config.OUTPUT_DIR / f"inventory_service_curve{suffix}.csv"
     curve.to_csv(curve_path)
     print(f"\n  saved -> {comp_path}\n  saved -> {curve_path}")
 
