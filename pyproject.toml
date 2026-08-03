@@ -1,0 +1,23 @@
+[project]
+name = "walmart-forecasting"
+version = "1.0.0"
+description = "M5 demand forecasting (point + 9-quantile) driving newsvendor inventory decisions"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+# Dependencies are pinned in requirements.txt (the source of truth for repro).
+# This file exists for tooling config and project metadata.
+
+[tool.pytest.ini_options]
+# Run from the repo root; the tests import the top-level `src` package.
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+# Sensible defaults: pyflakes (F), pycodestyle (E/W), isort (I), bugbear (B).
+select = ["E", "W", "F", "I", "B"]
