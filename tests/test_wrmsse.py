@@ -13,7 +13,6 @@ These use the real data, so they take a couple of minutes.
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from src import config, data

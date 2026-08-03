@@ -33,7 +33,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .hierarchy import GROUP_IDS, N_LEVELS, HierarchicalEvaluator
+from .hierarchy import N_LEVELS, HierarchicalEvaluator
 
 
 class WRMSSEEvaluator(HierarchicalEvaluator):

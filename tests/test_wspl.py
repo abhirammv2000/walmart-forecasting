@@ -7,7 +7,6 @@ properties that must hold for any correct implementation.
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from src import config, data

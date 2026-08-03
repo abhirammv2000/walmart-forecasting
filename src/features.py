@@ -21,8 +21,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from . import config
-
 # Columns treated as categorical by LightGBM (encoded to int16 codes).
 ID_CAT_COLS = ["item_id", "dept_id", "cat_id", "store_id", "state_id"]
 EVENT_CAT_COLS = ["event_name_1", "event_type_1", "event_name_2", "event_type_2"]

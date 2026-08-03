@@ -77,7 +77,6 @@ def build_dataset(mode: str, train_start_day: int):
     prices = data.load_prices()
     encoders = features.build_label_encoders(sales_wide, calendar)
 
-    keep_from = train_start_day - max(features.LAG_DAYS) - max(features.ROLL_WINDOWS)
     train_parts, horizon_parts = [], []
 
     for store in config.STORES:

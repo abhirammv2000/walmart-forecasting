@@ -23,10 +23,9 @@ import csv
 import time
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
-from . import config, data, dataset, features, quantile
+from . import config, data, dataset, quantile
 from .wspl import QUANTILES, WSPLEvaluator
 
 UNCERTAINTY_CSV = config.OUTPUT_DIR / "uncertainty_experiments.csv"
