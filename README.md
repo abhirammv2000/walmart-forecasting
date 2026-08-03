@@ -43,6 +43,12 @@ which was the single most common M5 failure mode.
 And the check that ties theory to practice: the **empirically cost-minimising
 service level (0.900)** matches the **theoretical critical ratio (0.909)**.
 
+![Newsvendor vs. ordering the mean forecast: 53% lower cost, fill rate 48%→92%](docs/img/policy_comparison.png)
+
+*Ordering a demand **quantile** instead of the average forecast converts a wall of
+lost-sales (shortage) cost into a little holding cost — halving total cost while
+lifting service from 48% to 92%.*
+
 > **Honest scope note.** WRMSSE 0.6475 is a solid, fully-reproducible single-model
 > result — not a leaderboard-topping one (strong public single models reach ~0.52
 > via heavy tuning / per-store models / ensembling, deliberately out of scope
@@ -65,6 +71,12 @@ The catch that makes it hard: roughly **60% of the bottom-level series are zeros
 (intermittent demand). The right order quantity for such items is emphatically
 *not* the average forecast — it's a tail quantile — which is why the project
 carries the demand *distribution* all the way through to the decision.
+
+![Distribution of zero-sales-day fraction across series; overall ~62% of series-days are zero](docs/img/demand_intermittency.png)
+
+*Most items don't sell on most days. A model that minimises average error learns
+to predict ~0, so the *average* forecast is useless for stocking — you need the
+upper tail.*
 
 ---
 
@@ -93,6 +105,17 @@ were implemented and **A/B-tested on CV — and shelved because they produced no
 measurable gain** at fixed hyperparameters. Reporting what *didn't* work is part
 of the point; see [docs/05-features.md](docs/05-features.md).
 
+![Aggregate daily forecast vs actual over the 28-day horizon, MAPE 6.2%](docs/img/forecast_vs_actual.png)
+
+*At the aggregate level the model tracks the weekly seasonality closely (6.2%
+MAPE); the small persistent gap below actual is the known conservative bias of a
+median/Tweedie forecast.*
+
+The model leans on recent demand level (rolling means) and item identity, with
+price and calendar as secondary signals — sensible and interpretable:
+
+![Top-15 feature importance by gain: rolling means and item_id dominate](docs/img/feature_importance.png)
+
 ### How it's validated
 Rolling-origin backtests on three 28-day windows (never random splits), steering
 on the CV mean, with d1914–1941 held out and touched once. See
@@ -110,6 +133,11 @@ forecasts **nine quantiles** (`0.005 … 0.995`) and is scored with **WSPL**
   XGBoost multi-output fit** (`reg:quantileerror` over all nine alphas at once).
 * Independent fits can cross (`q_0.005 > q_0.995`); predictions are **sorted per
   (series, day)** to stay a valid distribution.
+
+![Nine-quantile prediction-interval fan vs actuals for a representative series](docs/img/quantile_fan.png)
+
+*The output is a full distribution per series-day. The inventory policy reads its
+order quantity straight off this fan.*
 
 **Limitation, stated plainly:** this model is trained on ~4.1M rows (vs. the point
 model's 42M) because multi-quantile training is expensive. A retrain at 4× the
@@ -138,6 +166,12 @@ fill rate, stockout rate, and holding/shortage/total cost.
 zeros, the median forecast is *0* for most SKU-days, so "order the forecast"
 literally means "stock nothing" — no amount of extra WRMSSE tuning fixes that;
 you need the distribution.
+
+![Total cost vs target service level: a U-curve whose minimum sits on the theoretical critical ratio](docs/img/cost_service_curve.png)
+
+*Sweeping the service level traces a cost U-curve whose empirical minimum (0.90)
+lands almost exactly on the newsvendor critical ratio (0.909) — the model and the
+theory agree.*
 
 The simulation also supports a non-zero **lead time**, where stock must cover the
 `L+R`-day protection interval. Since **quantiles are not additive**, that interval
@@ -182,12 +216,13 @@ rebuilt system in `src/` is cloud-agnostic and was validated on GCP.
 
 ```
 src/         data, features, cache, metrics (WRMSSE + WSPL), CV harness,
-             quantile forecasting, newsvendor inventory sim, baseline/submission
+             quantile forecasting, newsvendor inventory sim, plots, baseline/submission
 tests/       30 tests: metrics, economics, and the leakage guarantee
 docs/        01-data · 02-wrmsse · 03-baseline · 04-validation · 05-features
-             · 06-results · 07-uncertainty · 08-inventory · experiment logs
+             · 06-results · 07-uncertainty · 08-inventory · experiment logs · img/
 scripts_vm/  cloud run scripts
 legacy/      the original SageMaker/Docker attempt (kept, not used)
+Makefile     make install | test | lint | figures
 ```
 
 ## Quickstart
@@ -205,7 +240,13 @@ python -m src.run_uncertainty --name q --fold final --train-start-day 1750 \
 
 # Inventory: newsvendor policy + cost/service trade-off
 python -m src.run_inventory --quantiles "outputs/predictions/quantiles_*.parquet"
+
+# Regenerate the figures in docs/img
+python -m src.plots
 ```
+
+Common tasks are wrapped in a `Makefile`: `make install`, `make test`,
+`make lint`, `make figures`.
 
 ## Documentation
 
