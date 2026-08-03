@@ -147,7 +147,7 @@ def test_newsvendor_quantile_beats_ordering_the_mean():
     cu, co = 0.30, 0.03
     cr = inv.critical_ratio(cu, co)
 
-    mean_policy = inv.mean_forecast_policy(cube, quantiles)
+    mean_policy = inv.median_forecast_policy(cube, quantiles)
     nv_policy = inv.order_up_to_levels(cube, quantiles, cr)
 
     mean_cost = inv.simulate(mean_policy, demand, price, cu, co)["total_cost"]

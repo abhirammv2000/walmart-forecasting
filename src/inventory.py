@@ -257,14 +257,17 @@ def service_level_curve(quantile_cube: np.ndarray, quantiles: np.ndarray,
     return pd.DataFrame(rows).set_index("service_level")
 
 
-def mean_forecast_policy(quantile_cube: np.ndarray, quantiles: np.ndarray
-                         ) -> np.ndarray:
-    """The naive benchmark: order the central (median) forecast.
+def median_forecast_policy(quantile_cube: np.ndarray, quantiles: np.ndarray
+                           ) -> np.ndarray:
+    """Reference benchmark: order the **median** (q=0.5) forecast.
 
-    Stands in for "we built a point forecast and ordered that much". Our point
-    model targets the conditional mean; the q=0.5 column is the closest
-    like-for-like from the same quantile model, which keeps the comparison about
-    *the decision rule* rather than about two different models.
+    Read straight off the same quantile model, so the comparison is purely about
+    the *decision rule* (which quantile you stock to), not two different models.
+    Because the median of a right-skewed, zero-heavy demand distribution sits
+    low, this deliberately under-stocks - by construction it covers realised
+    demand only ~50% of the time, so its fill rate is ~50%. For a fairer,
+    stronger baseline, ``src.run_inventory`` also compares against the point
+    (conditional-mean) forecast from the Tweedie model.
     """
     mid = int(np.searchsorted(quantiles, 0.5))
     return quantile_cube[:, :, mid].copy()

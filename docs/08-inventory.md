@@ -87,30 +87,35 @@ Outputs `outputs/inventory_policy_comparison.csv` and
 
 | policy | fill rate | stockout rate | holding | shortage | **total cost** |
 |---|---|---|---|---|---|
-| order the median forecast | 47.6% | 38% | 19,816 | 661,701 | **681,517** |
-| **newsvendor `Q* = F⁻¹(0.909)`** | **92.5%** | **7%** | 225,511 | 92,219 | **317,730** |
+| order the point (mean) forecast | 61.0% | 34% | 45,171 | 497,044 | **542,215** |
+| order the median forecast | 48.8% | 38% | 20,745 | 651,028 | **671,773** |
+| **newsvendor `Q* = F⁻¹(0.909)`** | **92.1%** | **7%** | 215,867 | 99,990 | **315,857** |
 
-**The newsvendor policy costs 53.4% less** (681,517 → 317,730) *and* lifts fill
-rate from 47.6% to 92.5%. It buys ~11× more holding cost and eliminates ~7× more
-shortage cost — a trade that is strongly worth making when `Cu` is 10× `Co`.
+The **point forecast** is the fair baseline — the amount a planner ordering the
+model's central (Tweedie-mean) forecast would actually stock. Against it, **the
+newsvendor policy costs 42% less** (542,215 → 315,857, ~$226K) *and* lifts fill
+rate from 61% to 92%. It buys more holding cost and eliminates far more shortage
+cost — a trade strongly worth making when `Cu` is 10× `Co`.
 
-**Why the mean policy fails so badly** — and this is the sharpest result here.
-With ~60% of bottom-level series being zeros, the **median forecast is 0 for most
-SKU-days**. "Order the point forecast" therefore literally means "stock nothing"
-for a large share of the catalogue, and you lose the sale every time demand shows
-up. Intermittent demand is exactly where point forecasts fail as decisions, and
-no amount of extra WRMSSE tuning fixes it — you need the distribution.
+**Why a central forecast under-serves.** Fill rate tracks the demand quantile you
+stock to: order the median (P50) and you cover demand ~half the time, so ~49%
+fill; order the point/mean forecast and you get ~61%; order the newsvendor
+quantile (P91) and you get ~92%. With **68%** of bottom-level series-days being
+zeros, the median is literally 0 for most SKU-days — which is why ordering it is
+even worse than the mean. Intermittent demand is exactly where point forecasts
+fail *as decisions*, and no amount of accuracy tuning fixes it — you need the
+distribution.
 
 ### The trade-off curve
 
 | service level | fill rate | holding | shortage | total cost |
 |---|---|---|---|---|
-| 0.50 | 0.48 | 19,816 | 661,701 | 681,517 |
-| 0.70 | 0.69 | 64,290 | 388,279 | 452,569 |
-| 0.80 | 0.79 | 102,375 | 261,530 | 363,905 |
-| 0.85 | 0.85 | 141,325 | 183,255 | 324,580 |
-| **0.90** | **0.92** | 212,143 | 102,433 | **314,576** ← minimum |
-| 0.95 | 0.95 | 287,131 | 59,499 | 346,630 |
+| 0.50 | 0.49 | 20,745 | 651,028 | 671,773 |
+| 0.70 | 0.70 | 65,001 | 382,819 | 447,820 |
+| 0.80 | 0.79 | 102,032 | 260,609 | 362,641 |
+| 0.85 | 0.85 | 138,602 | 186,471 | 325,073 |
+| **0.90** | **0.91** | 203,598 | 109,989 | **313,586** ← minimum |
+| 0.95 | 0.95 | 272,443 | 66,781 | 339,224 |
 | 0.975 | 0.96 | 325,668 | 47,136 | 372,804 |
 | 0.995 | 0.99 | 537,298 | 17,680 | 554,978 |
 
@@ -145,18 +150,22 @@ quantile function (independently), sum the sample paths over the window, and rea
 the quantile off the *summed* distribution (`protection_interval_levels`). The
 simulation also tracks an order pipeline so goods in transit aren't re-ordered.
 
-**Result at `L=2` (3-day protection interval), same held-out window:**
+**Result at `L=2` (3-day protection interval), same held-out window.** Here the
+fair baseline is the **median with the same protection-interval adjustment** —
+the point-forecast policy ignores lead time entirely (it stays a one-day order),
+so it collapses to ~26% fill and isn't a like-for-like comparison:
 
 | policy | fill rate | **total cost** |
 |---|---|---|
-| order the median forecast | 61.1% | 566,627 |
+| median forecast (protection-interval P50) | 61.1% | 566,627 |
 | newsvendor `Q* = F⁻¹(0.909)` | 85.2% | 509,432 (**−10.1%**) |
 
 Two honest observations:
 
-1. **The newsvendor edge shrinks with lead time** (−53% at `L=0` → −10% at
-   `L=2`). Committing stock further ahead against a longer-horizon forecast is
-   simply harder, and everyone's costs rise.
+1. **The newsvendor edge shrinks with lead time.** Against the same
+   protection-interval median baseline, the advantage falls from **−53% at `L=0`**
+   to **−10% at `L=2`**. Committing stock further ahead against a longer-horizon
+   forecast is simply harder, and everyone's costs rise.
 2. **Theory and practice start to diverge**: the empirical cost-minimising
    service level drops to **0.800**, below the theoretical critical ratio
    (0.909). The clean `L=0` agreement relied on the daily forecast being well

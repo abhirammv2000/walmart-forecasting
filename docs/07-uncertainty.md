@@ -66,7 +66,7 @@ wrong for a slow-moving SKU and a fast-moving one simultaneously.
 
 A sanity check that the method behaves: the `0.005` and `0.025` models converge
 almost immediately and predict ~0 nearly everywhere. That is **correct** — with
-~60% of bottom-level series being zeros, the 0.5th percentile of demand really
+68% of bottom-level series-days being zeros, the 0.5th percentile of demand really
 is zero for most SKU-days.
 
 ### Quantile crossing

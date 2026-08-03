@@ -100,44 +100,58 @@ def cost_service_curve(curve_csv: Path = config.OUTPUT_DIR / "inventory_service_
 # --------------------------------------------------------------------------- #
 def policy_comparison(cmp_csv: Path = config.OUTPUT_DIR / "inventory_policy_comparison.csv"):
     df = pd.read_csv(cmp_csv)
-    df["label"] = np.where(df["policy"].str.contains("newsvendor", case=False),
-                           "Newsvendor\n(order a quantile)",
-                           "Order the mean\nforecast")
-    # Put the baseline first, our approach second.
-    df = df.sort_values("policy", key=lambda s: s.str.contains("newsvendor")).reset_index(drop=True)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.6, 4.6))
+    def _kind(p: str) -> str:
+        p = p.lower()
+        return ("newsvendor" if "newsvendor" in p
+                else "point" if ("point" in p or "mean" in p) else "median")
+    df["kind"] = df["policy"].map(_kind)
+    order = {"point": 0, "median": 1, "newsvendor": 2}
+    df = df.sort_values("kind", key=lambda s: s.map(order)).reset_index(drop=True)
+    label = {"point": "Point forecast\n(order the mean)",
+             "median": "Median forecast\n(order P50)",
+             "newsvendor": "Newsvendor\n(order a quantile)"}
+    df["label"] = df["kind"].map(label)
+    # Baselines neutral, our approach highlighted.
+    bar_color = {"point": VERMILLION, "median": "#9a9a9a", "newsvendor": BLUE}
+    colors = [bar_color[k] for k in df["kind"]]
+
+    # Headline numbers: point forecast (the fair baseline) vs newsvendor.
+    base = df[df["kind"] == "point"].iloc[0] if (df["kind"] == "point").any() \
+        else df[df["kind"] == "median"].iloc[0]
+    nv = df[df["kind"] == "newsvendor"].iloc[0]
+    cost_drop = (1 - nv["total_cost"] / base["total_cost"]) * 100
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.8, 4.7))
     x = np.arange(len(df))
-    colors = [VERMILLION, BLUE]
 
     # Left: total cost, split into holding + shortage.
-    hold = df["holding_cost"].to_numpy()
-    short = df["shortage_cost"].to_numpy()
-    ax1.bar(x, hold, color=SKY, label="holding", width=0.6)
-    ax1.bar(x, short, bottom=hold, color=ORANGE, label="shortage", width=0.6)
+    hold, short = df["holding_cost"].to_numpy(), df["shortage_cost"].to_numpy()
+    ax1.bar(x, hold, color=SKY, label="holding", width=0.62)
+    ax1.bar(x, short, bottom=hold, color=ORANGE, label="shortage", width=0.62)
     for xi, tot in zip(x, df["total_cost"]):
-        ax1.text(xi, tot, f"{tot:,.0f}", ha="center", va="bottom",
+        ax1.text(xi, tot, f"${tot/1e3:,.0f}K", ha="center", va="bottom",
                  fontsize=10, fontweight="bold", color=INK)
-    ax1.set_xticks(x); ax1.set_xticklabels(df["label"], fontsize=9)
-    ax1.set_ylabel("total cost")
-    ax1.set_title("53% lower cost")
+    ax1.set_xticks(x); ax1.set_xticklabels(df["label"], fontsize=8.5)
+    ax1.set_ylabel("total cost ($)")
+    ax1.set_title(f"{cost_drop:.0f}% lower cost vs the point forecast")
     ax1.legend(frameon=False, fontsize=9, loc="upper right")
     ax1.set_ylim(0, df["total_cost"].max() * 1.18)
     _despine(ax1)
 
     # Right: fill rate.
     fr = df["fill_rate"].to_numpy()
-    ax2.bar(x, fr * 100, color=colors, width=0.6)
+    ax2.bar(x, fr * 100, color=colors, width=0.62)
     for xi, f in zip(x, fr):
         ax2.text(xi, f * 100, f"{f*100:.0f}%", ha="center", va="bottom",
                  fontsize=10, fontweight="bold", color=INK)
-    ax2.set_xticks(x); ax2.set_xticklabels(df["label"], fontsize=9)
+    ax2.set_xticks(x); ax2.set_xticklabels(df["label"], fontsize=8.5)
     ax2.set_ylabel("fill rate (%)")
-    ax2.set_title("48% → 92% demand met")
+    ax2.set_title(f"{base['fill_rate']*100:.0f}% → {nv['fill_rate']*100:.0f}% demand met")
     ax2.set_ylim(0, 108)
     _despine(ax2)
 
-    fig.suptitle("Ordering a demand quantile, not the average forecast",
+    fig.suptitle("Ordering a demand quantile, not the point forecast",
                  fontsize=14, fontweight="bold", y=1.02)
     return _save(fig, "policy_comparison.png")
 

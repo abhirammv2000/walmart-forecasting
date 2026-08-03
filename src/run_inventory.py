@@ -1,17 +1,24 @@
 """Project 2 driver: turn quantile forecasts into stocking decisions and cost them.
 
-Loads the saved nine-quantile forecasts for the held-out window, applies two
+Loads the saved nine-quantile forecasts for the held-out window, applies the
 competing policies against the **actual** realised demand, and reports the
 business metrics plus the service/cost trade-off curve.
 
 The comparison that matters::
 
-    policy A: order the central (median) forecast   <- "we have a point forecast"
-    policy B: order Q* = F^-1(Cu/(Cu+Co))           <- newsvendor, uses the tail
+    point forecast : order the model's central (Tweedie-mean) forecast  <- fair baseline
+    median (P50)   : order the 0.5 quantile                             <- reference
+    newsvendor     : order Q* = F^-1(Cu/(Cu+Co))                        <- uses the tail
+
+The **point forecast** is the fair baseline (what a planner ordering the point
+forecast would actually stock); the median is shown for reference because, for
+mostly-zero series, its ~0 order makes it an even weaker benchmark.
 
 Run::
 
-    python -m src.run_inventory --quantiles outputs/predictions/quantiles_*.parquet
+    python -m src.run_inventory \\
+        --quantiles      outputs/predictions/quantiles_*.parquet \\
+        --point-forecast outputs/predictions/baseline_validation.csv
 """
 from __future__ import annotations
 
@@ -60,6 +67,24 @@ def load_actuals(keys: pd.DataFrame) -> np.ndarray:
     return ew[DAY_COLS].to_numpy(dtype=np.float64)
 
 
+def load_point_forecast(path: str, keys: pd.DataFrame) -> np.ndarray:
+    """Load a point (conditional-mean) forecast, aligned to ``keys`` row order.
+
+    This is the *fair* baseline: the amount a team ordering the point forecast
+    would actually stock. The point-forecast file (from ``src.baseline``) uses
+    ``_validation`` ids while the quantile file uses ``_evaluation`` ids, so we
+    join on the suffix-stripped **base id** (item_store), which is shared.
+    """
+    pf = pd.read_csv(path)
+    pf["base_id"] = pf["id"].str.rsplit("_", n=1).str[0]
+    pf = pf.set_index("base_id")
+    base = keys["id"].str.rsplit("_", n=1).str[0]
+    missing = set(base) - set(pf.index)
+    if missing:
+        raise ValueError(f"point forecast missing {len(missing)} series")
+    return pf.loc[base, DAY_COLS].to_numpy(dtype=np.float64)
+
+
 def load_prices(keys: pd.DataFrame) -> np.ndarray:
     """Unit sell price per (series, day), aligned to ``keys`` row order.
 
@@ -99,6 +124,10 @@ def main():
     ap = argparse.ArgumentParser(description="M5 inventory policy simulation")
     ap.add_argument("--quantiles", required=True,
                     help="Path (or glob) to the saved quantile parquet.")
+    ap.add_argument("--point-forecast", default=None,
+                    help="Optional point (mean) forecast CSV to use as the "
+                         "primary baseline - the fair 'order the point forecast' "
+                         "policy. Falls back to the median if omitted.")
     ap.add_argument("--underage-frac", type=float, default=inventory.DEFAULT_UNDERAGE_FRAC)
     ap.add_argument("--overage-frac", type=float, default=inventory.DEFAULT_OVERAGE_FRAC)
     ap.add_argument("--no-carryover", action="store_true",
@@ -144,11 +173,16 @@ def main():
         return inventory.order_up_to_levels(cube, qs, service)
 
     # --- the headline comparison ------------------------------------------- #
-    policies = {
-        "mean_forecast (order the median)": (
-            _levels(0.5) if L > 0 else inventory.mean_forecast_policy(cube, qs)),
-        f"newsvendor (order Q* at CR={cr:.3f})": _levels(cr),
-    }
+    # Baselines first (the fair point/mean forecast if provided, plus the median
+    # for reference), newsvendor last.
+    policies = {}
+    if args.point_forecast:
+        policies["point_forecast (order the mean)"] = load_point_forecast(
+            args.point_forecast, keys)
+    policies["median_forecast (order P50)"] = (
+        _levels(0.5) if L > 0 else inventory.median_forecast_policy(cube, qs))
+    policies[f"newsvendor (order Q* at CR={cr:.3f})"] = _levels(cr)
+
     rows = []
     for name, q in policies.items():
         m = inventory.simulate(q, demand, price, cu, co, carryover=carry,
@@ -162,11 +196,13 @@ def main():
                 "shortage_cost", "total_cost"]].to_string(
         float_format=lambda v: f"{v:,.2f}"))
 
-    a, b = comp["total_cost"].iloc[0], comp["total_cost"].iloc[1]
-    print(f"\n  newsvendor vs mean-forecast: total cost {a:,.0f} -> {b:,.0f} "
-          f"({100*(a-b)/a:.1f}% lower)")
-    print(f"  fill rate: {comp['fill_rate'].iloc[0]:.3%} -> "
-          f"{comp['fill_rate'].iloc[1]:.3%}")
+    # Headline: newsvendor vs the primary baseline (the first policy listed).
+    base_name, nv_name = list(policies)[0], list(policies)[-1]
+    a, b = comp.loc[base_name, "total_cost"], comp.loc[nv_name, "total_cost"]
+    print(f"\n  newsvendor vs {base_name.split(' ')[0]}: total cost "
+          f"{a:,.0f} -> {b:,.0f} ({100*(a-b)/a:.1f}% lower, ${a-b:,.0f})")
+    print(f"  fill rate: {comp.loc[base_name, 'fill_rate']:.1%} -> "
+          f"{comp.loc[nv_name, 'fill_rate']:.1%}")
 
     suffix = f"_L{L}" if L > 0 else ""
     comp_path = config.OUTPUT_DIR / f"inventory_policy_comparison{suffix}.csv"

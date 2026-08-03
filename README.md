@@ -37,17 +37,21 @@ which was the single most common M5 failure mode.
 
 | policy | fill rate | **total cost** |
 |---|---|---|
-| order the median forecast | 47.6% | 681,517 |
-| **newsvendor `Q* = F⁻¹(CR)`** | **92.5%** | **317,730 (−53%)** |
+| order the point (mean) forecast | 61.0% | $542K |
+| order the median forecast | 48.8% | $672K |
+| **newsvendor `Q* = F⁻¹(CR)`** | **92.1%** | **$316K (−42% vs the point forecast)** |
 
+vs. the fair baseline — the **point forecast** a planner would actually order to —
+the newsvendor policy is **42% cheaper (~$226K)** and lifts fill rate **61% → 92%**.
 And the check that ties theory to practice: the **empirically cost-minimising
 service level (0.900)** matches the **theoretical critical ratio (0.909)**.
 
-![Newsvendor vs. ordering the mean forecast: 53% lower cost, fill rate 48%→92%](docs/img/policy_comparison.png)
+![Point forecast vs. median vs. newsvendor: 42% lower cost, fill rate 61%→92%](docs/img/policy_comparison.png)
 
-*Ordering a demand **quantile** instead of the average forecast converts a wall of
-lost-sales (shortage) cost into a little holding cost — halving total cost while
-lifting service from 48% to 92%.*
+*Ordering a demand **quantile** instead of the point forecast converts a wall of
+lost-sales (shortage) cost into holding cost — 42% lower total cost and fill rate
+from 61% to 92%. (Ordering the median is worse still, at 49% fill: the median of a
+mostly-zero series is ~0.)*
 
 > **Honest scope note.** WRMSSE 0.6475 is a solid, fully-reproducible single-model
 > result — not a leaderboard-topping one (strong public single models reach ~0.52
@@ -67,7 +71,7 @@ targets **demand forecasting → replenishment** to manage two costly risks:
 1. **Stock-outs** — lost revenue when demand exceeds what's on the shelf.
 2. **Overstocking** — holding, markdown and spoilage cost on slow-moving items.
 
-The catch that makes it hard: roughly **60% of the bottom-level series are zeros**
+The catch that makes it hard: **68% of the bottom-level series-days are zeros**
 (intermittent demand). The right order quantity for such items is emphatically
 *not* the average forecast — it's a tail quantile — which is why the project
 carries the demand *distribution* all the way through to the decision.
@@ -161,11 +165,12 @@ order sits **above** the point forecast. We simulate a periodic-review policy
 against **actual realised demand**, carrying inventory over day to day, and report
 fill rate, stockout rate, and holding/shortage/total cost.
 
-**Result:** the newsvendor policy cuts total cost **−53%** and lifts fill rate
-**47.6% → 92.5%** vs. ordering the point forecast. The sharpest finding: with ~60%
-zeros, the median forecast is *0* for most SKU-days, so "order the forecast"
-literally means "stock nothing" — no amount of extra WRMSSE tuning fixes that;
-you need the distribution.
+**Result:** vs. ordering the point forecast, the newsvendor policy cuts total cost
+**−42% (~$226K)** and lifts fill rate **61% → 92%**. The sharpest finding: with
+**68%** of series-days being zeros, the *median* forecast is *0* for most SKU-days
+(ordering it gives only 49% fill) — so a central forecast structurally under-serves
+intermittent demand, and no amount of accuracy tuning fixes that; you need the
+distribution.
 
 ![Total cost vs target service level: a U-curve whose minimum sits on the theoretical critical ratio](docs/img/cost_service_curve.png)
 
