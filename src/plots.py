@@ -295,6 +295,37 @@ def intermittent_benchmark(csv: Path = config.OUTPUT_DIR / "intermittent_benchma
     return _save(fig, "intermittent_benchmark.png")
 
 
+# --------------------------------------------------------------------------- #
+# 8. Hierarchical reconciliation
+# --------------------------------------------------------------------------- #
+def reconciliation_benchmark(csv: Path = config.OUTPUT_DIR / "reconciliation_benchmark.csv"):
+    df = pd.read_csv(csv).set_index("method")
+    order = ["base (unreconciled)", "ols", "wls_struct", "bottom_up", "mint_shrink"]
+    df = df.reindex([m for m in order if m in df.index])
+    labels = {"base (unreconciled)": "Base\n(incoherent)", "ols": "OLS",
+              "wls_struct": "WLS", "bottom_up": "Bottom-up", "mint_shrink": "MinT"}
+    color = {"base (unreconciled)": VERMILLION, "mint_shrink": BLUE}
+    colors = [color.get(m, "#9a9a9a") for m in df.index]
+
+    fig, ax = plt.subplots(figsize=(7.8, 4.5))
+    x = np.arange(len(df))
+    ax.bar(x, df["overall"], color=colors, width=0.62)
+    for xi, (m, v) in zip(x, df["overall"].items()):
+        tag = "" if bool(df.loc[m, "coherent"]) else "  ✗ incoherent"
+        ax.text(xi, v, f"{v:.2f}", ha="center", va="bottom",
+                fontsize=10, fontweight="bold", color=INK)
+        if tag:
+            ax.text(xi, v * 0.5, "incoherent", ha="center", va="center",
+                    rotation=90, fontsize=8, color="white", fontweight="bold")
+    ax.set_xticks(x); ax.set_xticklabels([labels[m] for m in df.index], fontsize=9)
+    ax.set_ylabel("overall MASE  (lower is better)")
+    ax.set_title("MinT reconciles to coherent forecasts and the best accuracy")
+    ax.set_ylim(0, df["overall"].max() * 1.15)
+    _despine(ax)
+    ax.grid(axis="x", visible=False)
+    return _save(fig, "reconciliation_benchmark.png")
+
+
 def main() -> None:
     _style()
     print("Generating figures -> docs/img/")
@@ -305,6 +336,7 @@ def main() -> None:
     cost_service_curve()
     policy_comparison()
     intermittent_benchmark()
+    reconciliation_benchmark()
     print("Done.")
 
 

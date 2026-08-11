@@ -266,3 +266,4 @@ Common tasks are wrapped in a `Makefile`: `make install`, `make test`,
 | [07-uncertainty](docs/07-uncertainty.md) | Quantile forecasting + WSPL |
 | [08-inventory](docs/08-inventory.md) | **Newsvendor policy, simulation, trade-off** |
 | [09-intermittent](docs/09-intermittent.md) | Croston / SBA / TSB vs. the ML model, and when each wins |
+| [10-reconciliation](docs/10-reconciliation.md) | Hierarchical reconciliation (bottom-up, OLS, WLS, MinT) |
