@@ -265,3 +265,4 @@ Common tasks are wrapped in a `Makefile`: `make install`, `make test`,
 | [06-results](docs/06-results.md) | Headline results, noise finding, submission |
 | [07-uncertainty](docs/07-uncertainty.md) | Quantile forecasting + WSPL |
 | [08-inventory](docs/08-inventory.md) | **Newsvendor policy, simulation, trade-off** |
+| [09-intermittent](docs/09-intermittent.md) | Croston / SBA / TSB vs. the ML model, and when each wins |

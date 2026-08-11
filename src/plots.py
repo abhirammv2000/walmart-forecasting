@@ -268,6 +268,33 @@ def demand_intermittency():
     return _save(fig, "demand_intermittency.png")
 
 
+# --------------------------------------------------------------------------- #
+# 7. Classical intermittent methods vs the ML model
+# --------------------------------------------------------------------------- #
+def intermittent_benchmark(csv: Path = config.OUTPUT_DIR / "intermittent_benchmark.csv"):
+    df = pd.read_csv(csv).set_index("method")
+    order = ["seasonal_naive", "croston", "sba", "tsb", "lightgbm"]
+    df = df.reindex([m for m in order if m in df.index])
+    names = {"seasonal_naive": "Seasonal\nnaive", "croston": "Croston",
+             "sba": "SBA", "tsb": "TSB", "lightgbm": "LightGBM"}
+    labels = [names.get(m, m) for m in df.index]
+    colors = [BLUE if m == "lightgbm" else "#9a9a9a" for m in df.index]
+
+    fig, ax = plt.subplots(figsize=(7.8, 4.4))
+    x = np.arange(len(df))
+    ax.bar(x, df["WRMSSE"], color=colors, width=0.62)
+    for xi, v in zip(x, df["WRMSSE"]):
+        ax.text(xi, v, f"{v:.2f}", ha="center", va="bottom",
+                fontsize=10, fontweight="bold", color=INK)
+    ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylabel("WRMSSE  (lower is better)")
+    ax.set_title("Classical intermittent methods vs. the feature-based model")
+    ax.set_ylim(0, df["WRMSSE"].max() * 1.15)
+    _despine(ax)
+    ax.grid(axis="x", visible=False)
+    return _save(fig, "intermittent_benchmark.png")
+
+
 def main() -> None:
     _style()
     print("Generating figures -> docs/img/")
@@ -277,6 +304,7 @@ def main() -> None:
     feature_importance()
     cost_service_curve()
     policy_comparison()
+    intermittent_benchmark()
     print("Done.")
 
 
