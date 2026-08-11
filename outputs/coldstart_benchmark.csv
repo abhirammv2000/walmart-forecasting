@@ -1,0 +1,5 @@
+method,MASE
+global weekday profile,3.273
+analog (dept x store),2.676
+analog + price factor,2.739
+LightGBM (uses history),1.678

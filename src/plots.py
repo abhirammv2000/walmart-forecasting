@@ -326,6 +326,36 @@ def reconciliation_benchmark(csv: Path = config.OUTPUT_DIR / "reconciliation_ben
     return _save(fig, "reconciliation_benchmark.png")
 
 
+# --------------------------------------------------------------------------- #
+# 9. Cold-start / new-product forecasting
+# --------------------------------------------------------------------------- #
+def coldstart_benchmark(csv: Path = config.OUTPUT_DIR / "coldstart_benchmark.csv"):
+    df = pd.read_csv(csv).set_index("method")
+    order = ["global weekday profile", "analog (dept x store)",
+             "analog + price factor", "LightGBM (uses history)"]
+    df = df.reindex([m for m in order if m in df.index])
+    labels = {"global weekday profile": "Global\nprior",
+              "analog (dept x store)": "Analog\n(dept x store)",
+              "analog + price factor": "Analog\n+ price",
+              "LightGBM (uses history)": "LightGBM\n(has history)"}
+    color = {"analog (dept x store)": VERMILLION, "LightGBM (uses history)": BLUE}
+    colors = [color.get(m, "#9a9a9a") for m in df.index]
+
+    fig, ax = plt.subplots(figsize=(7.8, 4.5))
+    x = np.arange(len(df))
+    ax.bar(x, df["MASE"], color=colors, width=0.62)
+    for xi, v in zip(x, df["MASE"]):
+        ax.text(xi, v, f"{v:.2f}", ha="center", va="bottom",
+                fontsize=10, fontweight="bold", color=INK)
+    ax.set_xticks(x); ax.set_xticklabels([labels[m] for m in df.index], fontsize=9)
+    ax.set_ylabel("MASE  (lower is better)")
+    ax.set_title("Cold-start: analogs beat a global prior, but no-history has a cost")
+    ax.set_ylim(0, df["MASE"].max() * 1.15)
+    _despine(ax)
+    ax.grid(axis="x", visible=False)
+    return _save(fig, "coldstart_benchmark.png")
+
+
 def main() -> None:
     _style()
     print("Generating figures -> docs/img/")
@@ -337,6 +367,7 @@ def main() -> None:
     policy_comparison()
     intermittent_benchmark()
     reconciliation_benchmark()
+    coldstart_benchmark()
     print("Done.")
 
 
