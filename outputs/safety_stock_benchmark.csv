@@ -1,0 +1,3 @@
+method,target_SL,fill_rate,total_cost
+normal safety stock (mu + z*sigma),0.909,0.883,313887.0
+empirical quantile (newsvendor),0.909,0.921,315857.0

@@ -356,6 +356,35 @@ def coldstart_benchmark(csv: Path = config.OUTPUT_DIR / "coldstart_benchmark.csv
     return _save(fig, "coldstart_benchmark.png")
 
 
+# --------------------------------------------------------------------------- #
+# 10. Safety stock (normal approximation) vs the empirical quantile
+# --------------------------------------------------------------------------- #
+def safety_stock_benchmark(csv: Path = config.OUTPUT_DIR / "safety_stock_benchmark.csv"):
+    df = pd.read_csv(csv).set_index("method")
+    target = float(df["target_SL"].iloc[0]) * 100
+    labels = {"normal safety stock (mu + z*sigma)": "Normal safety stock\n(μ + z·σ)",
+              "empirical quantile (newsvendor)": "Empirical quantile\n(newsvendor)"}
+    df = df.reindex(list(labels))
+    colors = [VERMILLION, BLUE]
+
+    fig, ax = plt.subplots(figsize=(7.2, 4.6))
+    x = np.arange(len(df))
+    ax.bar(x, df["fill_rate"] * 100, color=colors, width=0.55)
+    for xi, v in zip(x, df["fill_rate"]):
+        ax.text(xi, v * 100, f"{v*100:.1f}%", ha="center", va="bottom",
+                fontsize=11, fontweight="bold", color=INK)
+    ax.axhline(target, color=GREEN, ls="--", lw=1.5,
+               label=f"target service level {target:.1f}%")
+    ax.set_xticks(x); ax.set_xticklabels([labels[m] for m in df.index], fontsize=9.5)
+    ax.set_ylabel("fill rate achieved (%)")
+    ax.set_title("Same service-level target — only the distribution hits it")
+    ax.set_ylim(0, 108)
+    ax.legend(frameon=False, fontsize=9, loc="lower center")
+    _despine(ax)
+    ax.grid(axis="x", visible=False)
+    return _save(fig, "safety_stock_benchmark.png")
+
+
 def main() -> None:
     _style()
     print("Generating figures -> docs/img/")
@@ -368,6 +397,7 @@ def main() -> None:
     intermittent_benchmark()
     reconciliation_benchmark()
     coldstart_benchmark()
+    safety_stock_benchmark()
     print("Done.")
 
 

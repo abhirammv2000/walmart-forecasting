@@ -268,3 +268,4 @@ Common tasks are wrapped in a `Makefile`: `make install`, `make test`,
 | [09-intermittent](docs/09-intermittent.md) | Croston / SBA / TSB vs. the ML model, and when each wins |
 | [10-reconciliation](docs/10-reconciliation.md) | Hierarchical reconciliation (bottom-up, OLS, WLS, MinT) |
 | [11-coldstart](docs/11-coldstart.md) | New-product / cold-start forecasting by attribute analogs |
+| [12-safety-stock](docs/12-safety-stock.md) | Safety stock / reorder point, and the newsvendor link |
