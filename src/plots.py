@@ -147,7 +147,7 @@ def policy_comparison(cmp_csv: Path = config.OUTPUT_DIR / "inventory_policy_comp
                  fontsize=10, fontweight="bold", color=INK)
     ax2.set_xticks(x); ax2.set_xticklabels(df["label"], fontsize=8.5)
     ax2.set_ylabel("fill rate (%)")
-    ax2.set_title(f"{base['fill_rate']*100:.0f}% → {nv['fill_rate']*100:.0f}% demand met")
+    ax2.set_title(f"{base['fill_rate']*100:.0f}% to {nv['fill_rate']*100:.0f}% demand met")
     ax2.set_ylim(0, 108)
     _despine(ax2)
 
@@ -377,7 +377,7 @@ def safety_stock_benchmark(csv: Path = config.OUTPUT_DIR / "safety_stock_benchma
                label=f"target service level {target:.1f}%")
     ax.set_xticks(x); ax.set_xticklabels([labels[m] for m in df.index], fontsize=9.5)
     ax.set_ylabel("fill rate achieved (%)")
-    ax.set_title("Same service-level target — only the distribution hits it")
+    ax.set_title("Same service-level target, only the distribution hits it")
     ax.set_ylim(0, 108)
     ax.legend(frameon=False, fontsize=9, loc="lower center")
     _despine(ax)

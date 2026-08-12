@@ -17,7 +17,7 @@ There are **30,490 bottom-level series**, each a unique (item, store) pair:
 | Departments | 7    | e.g. `FOODS_3` |
 
 3,049 items × 10 stores = 30,490 series. These roll up into **12 aggregation
-levels** (total → state → store → category → department → item → item×store),
+levels** (total -> state -> store -> category -> department -> item -> item×store),
 42,840 series in all, which is what WRMSSE averages over.
 
 ## The files (`data/`)
@@ -60,4 +60,4 @@ discipline (downcasting, per-store processing) matters.
 * **Prices are weekly**, keyed by `wm_yr_wk`, not daily. We merge them onto each
   day via the calendar's `wm_yr_wk` mapping.
 * **SNAP days** (when food stamps can be spent) materially lift FOODS demand and
-  differ by state — hence `snap_CA/TX/WI` are kept as features.
+  differ by state, hence `snap_CA/TX/WI` are kept as features.

@@ -5,14 +5,14 @@
 > train_start_day=1300. See [docs/04-validation.md](04-validation.md) for the
 > fold design and [docs/experiments.md](experiments.md) for the log.
 >
-> The two dev folds differ by ~0.16 WRMSSE — concrete proof that a single window
+> The two dev folds differ by ~0.16 WRMSSE, concrete proof that a single window
 > is a noisy signal, and why we steer on the **CV mean**. (The 0.6569 final-test
 > number reproduces the earlier single-window run of 0.6567, cross-validating the
 > harness.)
 
 This is the foundation the rest of the project builds on. It is deliberately a
 *simple, honest, fully-measured* model rather than a leaderboard-chasing
-ensemble — the kind of first model you would actually ship in industry: easy to
+ensemble, the kind of first model you would actually ship in industry: easy to
 reason about, cheap to retrain, and instrumented so every later change can be
 judged against it.
 
@@ -25,39 +25,39 @@ calendar + price signals. One model forecasts the entire 28-day horizon.
 
 ## Key design decisions (and why)
 
-### 1. One global model, not per-series or per-horizon
+### 1 - One global model, not per-series or per-horizon
 30,490 individual models would be unmaintainable and would ignore the huge
 amount of shared structure (a holiday lifts demand across many items). A single
 global model learns cross-series patterns and is one artifact to deploy. We also
-*avoid* the original code's **28 separate horizon models** — unnecessary given
+*avoid* the original code's **28 separate horizon models**, unnecessary given
 the non-recursive trick below.
 
-### 2. Non-recursive features (every lag ≥ 28)
+### 2 - Non-recursive features (every lag ≥ 28)
 To forecast day *d* we only use information available at d_1913. Because every
 lag is ≥ 28 days, the features for any horizon day (d_1914..d_1941) reach back
 only to days that are already known (d_1886..d_1913). So:
 
-* **No recursion** — we don't feed predictions back as inputs, so errors don't
+* **No recursion**, we don't feed predictions back as inputs, so errors don't
   compound across the horizon.
-* **No leakage** — a feature can never see the future.
-* **One model, one shot** — the same feature recipe works for all 28 days.
+* **No leakage**, a feature can never see the future.
+* **One model, one shot**, the same feature recipe works for all 28 days.
 
 This is the single most important structural choice in the baseline.
 
-### 3. Tweedie objective
-Daily item sales are mostly 0 or small integers with occasional spikes —
+### 3 - Tweedie objective
+Daily item sales are mostly 0 or small integers with occasional spikes , 
 classic intermittent demand. Tweedie regression (`tweedie_variance_power=1.1`)
 models this far better than plain RMSE/L2, which would over-smooth toward the
 mean. Predictions are clipped at 0 (negative demand is meaningless).
 
-### 4. Memory-bounded, per-store feature engineering
+### 4 - Memory-bounded, per-store feature engineering
 The melted table is ~59M rows; the dev box has ~5 GB free. So features are built
 **one store at a time** (≈3,049 series each) and only the rows inside the
-training window are kept. `train_start_day` trades RAM/time for data volume —
+training window are kept. `train_start_day` trades RAM/time for data volume , 
 1300 keeps ~18.7M training rows and fits comfortably. Lowering it (more history)
 is the first lever to pull for a better score on a bigger machine.
 
-### 5. Single source of truth for features
+### 5 - Single source of truth for features
 [`src/features.py`](../src/features.py) builds features for *both* training and
 prediction. The original project had two separate, drifting feature scripts
 (and a real bug from it); one function eliminates that whole class of error.
@@ -108,7 +108,7 @@ Overall **WRMSSE = 0.6567**. Per level:
 | 12 | Item × Store (bottom)        | 0.846 |
 
 **Reading the table:** aggregate levels (1–9) score well (~0.54–0.68); the
-hardest levels are the sparse bottom ones (10–12, ~0.85), exactly as expected —
+hardest levels are the sparse bottom ones (10–12, ~0.85), exactly as expected , 
 individual item-store demand is noisy and hard to pin down day-to-day. For
 context, a naive seasonal forecast scores ~1.08 overall, so the baseline is a
 clear, well-rounded improvement.
@@ -117,15 +117,15 @@ clear, well-rounded improvement.
 
 In rough order of expected payoff:
 
-1. **More training history** — lower `train_start_day` (needs more RAM); top
+1. **More training history**, lower `train_start_day` (needs more RAM); top
    solutions use years of data.
-2. **Recency-weighted / longer-window features** — 60- and 180-day rolling
+2. **Recency-weighted / longer-window features**, 60- and 180-day rolling
    stats, days-since-last-sale, rolling skew.
-3. **Better price features** — price change vs last week, price rank within
+3. **Better price features**, price change vs last week, price rank within
    department, promo detection.
-4. **Per-store or per-category models** — let the global model specialise.
-5. **Recursive features + multi-step** — riskier but unlocks short lags (1–27).
-6. **Tuning & ensembling** — hyperparameter search, seed/feature bagging,
+4. **Per-store or per-category models**, let the global model specialise.
+5. **Recursive features + multi-step**, riskier but unlocks short lags (1–27).
+6. **Tuning & ensembling**, hyperparameter search, seed/feature bagging,
    blending with a statistical model. (Where M5 winners earned their last
    ~0.13.)
 

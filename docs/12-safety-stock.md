@@ -1,8 +1,8 @@
-# 12 — Safety Stock, Reorder Points, and the Newsvendor Link
+# 12 - Safety Stock, Reorder Points, and the Newsvendor Link
 
 > "Safety stock" is the number every planner actually works with. This closes the
-> loop: the classical `μ + z·σ` safety-stock formula **is** the newsvendor order —
-> under a normal-demand assumption — and showing exactly where that assumption
+> loop: the classical `μ + z·σ` safety-stock formula **is** the newsvendor order , 
+> under a normal-demand assumption, and showing exactly where that assumption
 > breaks is the quantitative case for forecasting the whole distribution.
 
 ## The classical formulas ([`src/safety_stock.py`](../src/safety_stock.py))
@@ -22,7 +22,7 @@ independent days.
 
 ## The link to the newsvendor (this is the "aha")
 
-Order-up-to `S = μ + z·σ` is just the **demand quantile at probability `Φ(z)` —
+Order-up-to `S = μ + z·σ` is just the **demand quantile at probability `Φ(z)` , 
 if demand is normal.** Set the service level to the newsvendor critical ratio
 `CR = Cu/(Cu+Co)` and safety stock **is** the newsvendor order, rewritten as
 "mean + buffer" instead of `F⁻¹(CR)`:
@@ -32,7 +32,7 @@ safety-stock order-up-to  =  μ + Φ⁻¹(CR)·σ   ≈   F⁻¹(CR)   (only if 
 ```
 
 So the two inventory pillars in this project are the same decision under different
-demand models — the parametric (Gaussian) one and the empirical (quantile) one.
+demand models, the parametric (Gaussian) one and the empirical (quantile) one.
 
 ## Where the Gaussian assumption breaks ([`src/run_safety_stock.py`](../src/run_safety_stock.py))
 
@@ -57,16 +57,16 @@ lands on target.
 
 This is the quantitative argument for the distributional forecast:
 
-- Safety stock is fine, standard, and interpretable — **when demand is roughly
+- Safety stock is fine, standard, and interpretable, **when demand is roughly
   normal** (fast-moving, smooth items). Then `μ + z·σ` and `F⁻¹(CR)` agree.
-- For **intermittent / lumpy** demand — 95% of this catalogue (see
-  [09-intermittent.md](09-intermittent.md)) — the normal approximation is
+- For **intermittent / lumpy** demand, 95% of this catalogue (see
+  [09-intermittent.md](09-intermittent.md)), the normal approximation is
   mis-calibrated, and you should size the buffer from the **actual demand
   quantiles** instead. Which is exactly why the pipeline forecasts nine quantiles
   and feeds `F⁻¹(CR)` to the newsvendor.
 
 **Interview one-liner:** *"Safety stock is the newsvendor under a normal
-assumption — `μ + zσ` is just `F⁻¹` of the service level for a Gaussian. That's
+assumption, `μ + zσ` is just `F⁻¹` of the service level for a Gaussian. That's
 fine for smooth demand, but retail is zero-inflated and right-skewed, so the
 normal formula under-stocks and misses its service target; I size the buffer from
 the forecast's own quantiles instead."*

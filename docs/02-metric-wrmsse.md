@@ -7,7 +7,7 @@ against known reference values (see bottom).
 
 ## The formula, piece by piece
 
-### 1. RMSSE for one series
+### 1 - RMSSE for one series
 
 For a single series with 28-day horizon forecasts $\hat{y}_t$ and actuals $y_t$:
 
@@ -21,20 +21,20 @@ $$
   ($\hat{y}_t = y_{t-1}$) over the *training* history. The series is trimmed to
   start at its first non-zero sale, so the long zero "not yet launched" prefix
   doesn't deflate the scale.
-* "Scaled" → dividing by the naive error makes series comparable regardless of
+* "Scaled" -> dividing by the naive error makes series comparable regardless of
   volume. **RMSSE < 1 means you beat the naive forecast.**
 
-### 2. Weighting
+### 2 - Weighting
 
 Each series gets a weight $w_i$ equal to its **cumulative dollar sales (units ×
 sell price) over the last 28 training days**, normalised so weights sum to 1
 *within each aggregation level*. High-revenue series matter more.
 
-### 3. Averaging over 12 levels
+### 3 - Averaging over 12 levels
 
 The same forecast is aggregated to **12 levels** (total, per-state, per-store,
 per-category, per-department, several cross products, per-item, and the bottom
-item×store level — see [`GROUP_IDS`](../src/wrmsse.py)). WRMSSE is the simple
+item×store level, see [`GROUP_IDS`](../src/wrmsse.py)). WRMSSE is the simple
 average of the weighted RMSSE at each level:
 
 $$
@@ -42,7 +42,7 @@ $$
 $$
 
 Because the levels are averaged equally, **getting the aggregate levels right
-matters as much as the 30,490 bottom series** — a model that nails individual
+matters as much as the 30,490 bottom series**, a model that nails individual
 items but drifts on the state/store totals still scores poorly.
 
 ## How we use it
