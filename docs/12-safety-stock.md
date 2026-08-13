@@ -1,7 +1,7 @@
 # 12 - Safety Stock, Reorder Points, and the Newsvendor Link
 
 > "Safety stock" is the number every planner actually works with. This closes the
-> loop: the classical `μ + z·σ` safety-stock formula **is** the newsvendor order , 
+> loop: the classical `μ + z-σ` safety-stock formula **is** the newsvendor order,
 > under a normal-demand assumption, and showing exactly where that assumption
 > breaks is the quantitative case for forecasting the whole distribution.
 
@@ -12,9 +12,9 @@ With daily demand mean `μ`, standard deviation `σ`, lead time `L`, review peri
 | quantity | formula |
 |---|---|
 | service factor | `z = Φ⁻¹(service level)` |
-| **safety stock** | `SS = z · σ · √(L + R)` |
-| **reorder point** (continuous review) | `ROP = μ·L + z·σ·√L` |
-| **order-up-to** (periodic review) | `S = μ·(L + R) + z·σ·√(L + R)` |
+| **safety stock** | `SS = z | σ | √(L + R)` |
+| **reorder point** (continuous review) | `ROP = μ-L + z-σ-√L` |
+| **order-up-to** (periodic review) | `S = μ-(L + R) + z-σ-√(L + R)` |
 
 The `√(L + R)` is the **protection interval**: stock must cover demand variability
 over the whole window until the next order lands, and variance adds over
@@ -22,13 +22,13 @@ independent days.
 
 ## The link to the newsvendor (this is the "aha")
 
-Order-up-to `S = μ + z·σ` is just the **demand quantile at probability `Φ(z)` , 
+Order-up-to `S = μ + z-σ` is just the **demand quantile at probability `Φ(z)`,
 if demand is normal.** Set the service level to the newsvendor critical ratio
 `CR = Cu/(Cu+Co)` and safety stock **is** the newsvendor order, rewritten as
 "mean + buffer" instead of `F⁻¹(CR)`:
 
 ```
-safety-stock order-up-to  =  μ + Φ⁻¹(CR)·σ   ≈   F⁻¹(CR)   (only if demand ~ Normal)
+safety-stock order-up-to  =  μ + Φ⁻¹(CR)-σ   ≈   F⁻¹(CR)   (only if demand ~ Normal)
 ```
 
 So the two inventory pillars in this project are the same decision under different
@@ -43,13 +43,13 @@ Both methods are set to the **same** service-level target (the critical ratio,
 
 | method | target SL | **fill rate achieved** | total cost |
 |---|---|---|---|
-| normal safety stock (`μ + z·σ`) | 90.9% | **88.3%** (under target) | 313,887 |
+| normal safety stock (`μ + z-σ`) | 90.9% | **88.3%** (under target) | 313,887 |
 | empirical quantile (newsvendor) | 90.9% | **92.1%** (on target) | 315,857 |
 
 **Same target, different outcome.** The normal formula **under-stocks** and misses
 its own service goal by ~2.6 points, because retail demand is **zero-inflated and
 right-skewed**: the normal distribution has thin, symmetric tails (and formally
-allows negative demand), so `μ + z·σ` sits below the true 91st percentile. The
+allows negative demand), so `μ + z-σ` sits below the true 91st percentile. The
 **empirical quantile** reads the buffer straight off the forecast distribution and
 lands on target.
 
@@ -58,7 +58,7 @@ lands on target.
 This is the quantitative argument for the distributional forecast:
 
 - Safety stock is fine, standard, and interpretable, **when demand is roughly
-  normal** (fast-moving, smooth items). Then `μ + z·σ` and `F⁻¹(CR)` agree.
+  normal** (fast-moving, smooth items). Then `μ + z-σ` and `F⁻¹(CR)` agree.
 - For **intermittent / lumpy** demand, 95% of this catalogue (see
   [09-intermittent.md](09-intermittent.md)), the normal approximation is
   mis-calibrated, and you should size the buffer from the **actual demand

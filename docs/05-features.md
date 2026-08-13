@@ -34,7 +34,7 @@ matter which fold's cut-off we slice at.
 | year, month, week, day, dayofweek | date | seasonality |
 | sell_price | price | current selling price |
 | price_momentum | price | price ÷ item's mean price |
-| sales_lag_28 … sales_lag_35 | sales (lagged) | recent demand, ≥28-day lags |
+| sales_lag_28 ... sales_lag_35 | sales (lagged) | recent demand, ≥28-day lags |
 | rmean/rstd_l28_w{7,14,28} | sales (lagged) | short-term trend & volatility on lag-28 |
 
 Plus **release filtering** (Milestone A): rows before an item's first sale are

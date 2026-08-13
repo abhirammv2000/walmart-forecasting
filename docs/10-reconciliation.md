@@ -23,7 +23,7 @@ Measured incoherence of the base forecast: **total = 42,382 vs. sum of items =
 
 ## The methods ([`src/reconcile.py`](../src/reconcile.py))
 
-Every method reconciles as `ỹ = S·G·ŷ` (`S` = summing matrix, `G` = the mapping to
+Every method reconciles as `ỹ = S-G-ŷ` (`S` = summing matrix, `G` = the mapping to
 the bottom level); they differ only in `G`:
 
 | method | idea |
@@ -58,7 +58,7 @@ forecasts add up.
 
 2. **OLS is a trap (2.19, far worse than doing nothing).** It weights every node
    equally, so the enormous Total-level series dominates the least-squares fit and
-   corrupts the tiny item forecasts. This is *the* reason WLS/MinT exist , 
+   corrupts the tiny item forecasts. This is *the* reason WLS/MinT exist,
    weighting by scale / error variance is not optional at real hierarchies.
 
 3. **Bottom-up is a strong, honest default** (1.350, basically tied with MinT

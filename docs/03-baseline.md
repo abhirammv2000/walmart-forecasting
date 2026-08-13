@@ -45,7 +45,7 @@ only to days that are already known (d_1886..d_1913). So:
 This is the single most important structural choice in the baseline.
 
 ### 3 - Tweedie objective
-Daily item sales are mostly 0 or small integers with occasional spikes , 
+Daily item sales are mostly 0 or small integers with occasional spikes,
 classic intermittent demand. Tweedie regression (`tweedie_variance_power=1.1`)
 models this far better than plain RMSE/L2, which would over-smooth toward the
 mean. Predictions are clipped at 0 (negative demand is meaningless).
@@ -53,7 +53,7 @@ mean. Predictions are clipped at 0 (negative demand is meaningless).
 ### 4 - Memory-bounded, per-store feature engineering
 The melted table is ~59M rows; the dev box has ~5 GB free. So features are built
 **one store at a time** (≈3,049 series each) and only the rows inside the
-training window are kept. `train_start_day` trades RAM/time for data volume , 
+training window are kept. `train_start_day` trades RAM/time for data volume,
 1300 keeps ~18.7M training rows and fits comfortably. Lowering it (more history)
 is the first lever to pull for a better score on a bigger machine.
 
@@ -71,7 +71,7 @@ prediction. The original project had two separate, drifting feature scripts
 | **Events** (categorical) | event_name_1/2, event_type_1/2 |
 | **SNAP** | snap_CA, snap_TX, snap_WI |
 | **Price** | sell_price, price_momentum (price ÷ item's mean price) |
-| **Lags** | sales_lag_28 … sales_lag_35 |
+| **Lags** | sales_lag_28 ... sales_lag_35 |
 | **Rolling** (on lag-28) | mean & std over 7, 14, 28-day windows |
 
 33 features total. Categoricals are integer-encoded **globally** (a code means
@@ -80,7 +80,7 @@ the same thing in every store), which is required for a global model.
 ## How it's trained and validated
 
 ```
-train on d_1..d_1885  ──►  early-stop on d_1886..d_1913  ──►  forecast d_1914..d_1941  ──►  WRMSSE
+train on d_1..d_1885  ->  early-stop on d_1886..d_1913  ->  forecast d_1914..d_1941  ->  WRMSSE
 ```
 
 We hold out the last 28 days of the training window for LightGBM early stopping,
@@ -108,7 +108,7 @@ Overall **WRMSSE = 0.6567**. Per level:
 | 12 | Item × Store (bottom)        | 0.846 |
 
 **Reading the table:** aggregate levels (1–9) score well (~0.54–0.68); the
-hardest levels are the sparse bottom ones (10–12, ~0.85), exactly as expected , 
+hardest levels are the sparse bottom ones (10–12, ~0.85), exactly as expected,
 individual item-store demand is noisy and hard to pin down day-to-day. For
 context, a naive seasonal forecast scores ~1.08 overall, so the baseline is a
 clear, well-rounded improvement.

@@ -144,14 +144,14 @@ your last lever over stock until the *next* order arrives, it must cover demand
 over the **protection interval** `W = L + R` days, not one.
 
 This is where the "quantiles don't add" point becomes concrete. The 90th
-percentile of 3-day demand is **not** the sum of three daily 90th percentiles , 
+percentile of 3-day demand is **not** the sum of three daily 90th percentiles,
 that assumes all three bad days coincide. Instead we **sample** from each day's
 quantile function (independently), sum the sample paths over the window, and read
 the quantile off the *summed* distribution (`protection_interval_levels`). The
 simulation also tracks an order pipeline so goods in transit aren't re-ordered.
 
 **Result at `L=2` (3-day protection interval), same held-out window.** Here the
-fair baseline is the **median with the same protection-interval adjustment** , 
+fair baseline is the **median with the same protection-interval adjustment**,
 the point-forecast policy ignores lead time entirely (it stays a one-day order),
 so it collapses to ~26% fill and isn't a like-for-like comparison:
 

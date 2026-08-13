@@ -72,7 +72,7 @@ is zero for most SKU-days.
 ### Quantile crossing
 
 The nine models are fit independently, so nothing forces
-`q_0.005 ≤ … ≤ q_0.995`. A crossed set isn't a valid distribution and would
+`q_0.005 ≤ ... ≤ q_0.995`. A crossed set isn't a valid distribution and would
 break the newsvendor lookup. We **sort the nine predictions per (series, day)**
 the standard, loss-preserving fix, and report the pre-sort
 `crossing_rate` as a diagnostic.
