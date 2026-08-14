@@ -5,7 +5,8 @@ data/*.csv
 outputs/models/
 outputs/predictions/
 outputs/submissions/
-outputs/cache/          # regenerable feature caches (hundreds of MB)
+# regenerable feature caches (hundreds of MB)
+outputs/cache/
 outputs/*.log
 
 # Legacy heavy artifacts (kept locally, not versioned)

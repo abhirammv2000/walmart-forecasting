@@ -23,7 +23,7 @@ Measured incoherence of the base forecast: **total = 42,382 vs. sum of items =
 
 ## The methods ([`src/reconcile.py`](../src/reconcile.py))
 
-Every method reconciles as `ỹ = S-G-ŷ` (`S` = summing matrix, `G` = the mapping to
+Every method reconciles as `ỹ = S·G·ŷ` (`S` = summing matrix, `G` = the mapping to
 the bottom level); they differ only in `G`:
 
 | method | idea |
